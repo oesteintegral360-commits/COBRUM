@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block titulo %}COBRUM — Caja{% endblock %}
+
+{% block contenido %}
+
+{# Resultado de la última conciliación #}
+{% if conciliacion %}
+  {% if conciliacion.error %}
+    <div class="rounded-xl bg-red-50 border border-red-200 text-red-800 px-4 py-3 mb-6">{{ conciliacion.error }}</div>
+  {% else %}
+    <div class="rounded-xl bg-green-50 border border-green-200 text-green-900 px-4 py-3 mb-6">
+      <strong>Extracto procesado ✓</strong>
+      <div class="text-sm mt-1">{{ conciliacion.conciliados }} transferencia(s) conciliada(s) ·
+        {{ conciliacion.sin_match }} sin coincidencia en el extracto.</div>
+    </div>
+  {% endif %}
+{% endif %}
+
+<h1 class="text-2xl font-bold text-slate-900 mb-1">Caja</h1>
+<p class="text-sm text-slate-500 mb-6">La plata en movimiento: lo que se cobró y todavía no llegó del todo a la empresa.</p>
+
+{# Resumen arriba #}
+<div class="grid sm:grid-cols-2 gap-4 mb-8">
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-sm text-slate-500">💵 Plata en la calle (a rendir)</div>
+    <div class="text-4xl font-extrabold text-slate-900 mt-1">${{ "{:,.0f}".format(total_a_rendir).replace(",", ".") }}</div>
+    <p class="text-xs text-slate-400 mt-1">Efectivo que cobraron los vendedores y todavía no entregaron.</p>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-sm text-slate-500">🏦 Transferencias a conciliar</div>
+    <div class="text-4xl font-extrabold text-slate-900 mt-1">${{ "{:,.0f}".format(total_a_conciliar).replace(",", ".") }}</div>
+    <p class="text-xs text-slate-400 mt-1">Cobros por transferencia a cruzar contra el extracto del banco.</p>
+  </div>
+</div>
+
+{# Plata en la calle, por vendedor #}
+<h2 class="text-lg font-semibold text-slate-900 mb-3">💵 Plata en la calle, por vendedor</h2>
+{% if not por_vendedor %}
+  <p class="text-sm text-slate-400 mb-8">No hay efectivo pendiente de rendir. 👍</p>
+{% else %}
+  <div class="space-y-4 mb-8">
+    {% for vendedor, datos in por_vendedor.items() %}
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <span class="font-semibold text-slate-900">{{ vendedor }}</span>
+          <span class="text-lg font-bold text-slate-900">${{ "{:,.0f}".format(datos.total).replace(",", ".") }} a rendir</span>
+        </div>
+        <div class="divide-y divide-slate-100">
+          {% for c in datos.cobros %}
+            <div class="flex items-center justify-between py-2">
+              <div>
+                <span class="text-slate-700">{{ c.cliente }}</span>
+                <span class="text-xs text-slate-400 ml-2">{{ c.fecha.strftime("%d/%m %H:%M") }}</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="font-semibold text-slate-700">${{ "{:,.0f}".format(c.monto).replace(",", ".") }}</span>
+                <form action="/cobros/rendir" method="post">
+                  <input type="hidden" name="cobro_id" value="{{ c.id }}">
+                  <button type="submit" class="text-sm rounded-lg bg-green-600 text-white px-3 py-1.5 hover:bg-green-700">Marcar rendido</button>
+                </form>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{# Transferencias a conciliar + subir extracto #}
+<h2 class="text-lg font-semibold text-slate-900 mb-3">🏦 Transferencias a conciliar</h2>
+<div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mb-6">
+  {% if not transferencias %}
+    <p class="text-sm text-slate-400">No hay transferencias pendientes de conciliar.</p>
+  {% else %}
+    <div class="divide-y divide-slate-100 mb-4">
+      {% for t in transferencias %}
+        <div class="flex items-center justify-between py-2">
+          <span class="text-slate-700">{{ t.cliente }} <span class="text-xs text-slate-400">{{ t.fecha.strftime("%d/%m") }}</span></span>
+          <span class="font-semibold text-slate-700">${{ "{:,.0f}".format(t.monto).replace(",", ".") }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <form action="/cobros/conciliar" method="post" enctype="multipart/form-data" class="border-t border-slate-100 pt-4">
+    <label class="text-sm text-slate-600">Subí el extracto del banco (Excel) para cruzar por monto:</label>
+    <div class="flex flex-col sm:flex-row gap-2 mt-2">
+      <input name="archivo" type="file" accept=".xlsx,.xls" required
+             class="flex-1 text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-white">
+      <button type="submit" class="rounded-lg bg-blue-600 text-white px-5 py-2 font-semibold hover:bg-blue-700">Conciliar</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

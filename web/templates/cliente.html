@@ -90,6 +90,39 @@
   </div>
 {% endif %}
 
+{# --- Registrar cobro (Fase 5) --- #}
+{% if c.estado_gestion != 'pagado' and c.total_vencido > 0 %}
+<div class="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
+  <h2 class="text-sm font-semibold text-slate-700 mb-3">Registrar cobro</h2>
+  <form action="/cliente/{{ c.cuit }}/cobro" method="post" class="space-y-3">
+    <div>
+      <label class="text-xs text-slate-500">¿Cómo pagó?</label>
+      <div class="flex gap-2 mt-1">
+        <label class="flex-1 flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 cursor-pointer">
+          <input type="radio" name="metodo" value="efectivo" checked> 💵 Efectivo
+        </label>
+        <label class="flex-1 flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 cursor-pointer">
+          <input type="radio" name="metodo" value="transferencia"> 🏦 Transferencia
+        </label>
+      </div>
+      <p class="text-xs text-slate-400 mt-1">Efectivo queda “a rendir”. Transferencia queda “a conciliar” con el extracto.</p>
+    </div>
+    <div>
+      <label for="monto" class="text-xs text-slate-500">Monto cobrado</label>
+      <div class="flex items-center gap-2 mt-1">
+        <span class="text-slate-400">$</span>
+        <input id="monto" name="monto" type="number" step="0.01" min="0"
+               value="{{ "%.2f"|format(c.total_vencido) }}"
+               class="flex-1 rounded-lg border border-slate-300 px-3 py-2 focus:border-blue-500 focus:outline-none">
+      </div>
+    </div>
+    <button type="submit" class="w-full rounded-xl bg-green-600 px-6 py-3 text-white font-semibold hover:bg-green-700 transition">
+      Registrar cobro
+    </button>
+  </form>
+</div>
+{% endif %}
+
 {# --- Conversación --- #}
 <h2 class="text-sm font-semibold text-slate-500 mb-3">Conversación</h2>
 {% if not c.mensajes %}

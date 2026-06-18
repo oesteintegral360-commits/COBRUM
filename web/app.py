@@ -24,6 +24,8 @@ from cobranzas import planes as planes_mod
 from cobranzas import mensajeria
 from cobranzas import auto
 from cobranzas import respuestas
+from cobranzas import cobros as cobros_mod
+from cobranzas.modelos import Cobro
 
 AQUI = Path(__file__).resolve().parent
 SUBIDOS = AQUI / "subidos"
@@ -40,6 +42,8 @@ crear_tablas()
 _ultimo_resultado = {"datos": None}
 # Y el resumen de la última cobranza automática, para avisarle a la empresa qué se mandó solo.
 _ultima_cobranza = {"resumen": None}
+# Y el resultado de la última conciliación contra el extracto.
+_ultima_conciliacion = {"datos": None}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -453,6 +457,19 @@ def responder_cliente(cuit: str, boton: str = Form(...)):
     return RedirectResponse(url=f"/cliente/{cuit}", status_code=303)
 
 
+@app.post("/cliente/{cuit}/cobro")
+def registrar_cobro_cliente(cuit: str, metodo: str = Form(...), monto: float = Form(...)):
+    """Registra un cobro (efectivo o transferencia) y saca al cliente de la cobranza."""
+    sesion = Sesion()
+    try:
+        cliente = sesion.get(Cliente, cuit)
+        if cliente is not None and metodo in ("efectivo", "transferencia") and monto > 0:
+            cobros_mod.registrar_cobro(sesion, cliente, monto, metodo)
+    finally:
+        sesion.close()
+    return RedirectResponse(url=f"/cliente/{cuit}", status_code=303)
+
+
 @app.post("/cliente/{cuit}/gestion")
 def cambiar_gestion(cuit: str, accion: str = Form(...)):
     """Resuelve el estado de gestión: volver a gestión normal (reactivar)."""
@@ -465,3 +482,89 @@ def cambiar_gestion(cuit: str, accion: str = Form(...)):
     finally:
         sesion.close()
     return RedirectResponse(url=f"/cliente/{cuit}", status_code=303)
+
+
+# --- Caja: la plata en movimiento (Fase 5) ------------------------------------
+
+SUBIDOS_EXTRACTO = SUBIDOS  # reusamos la carpeta de subidos
+
+
+@app.get("/cobros", response_class=HTMLResponse)
+def pagina_cobros(request: Request):
+    """Pantalla Caja: plata en la calle (a rendir) y transferencias a conciliar."""
+    sesion = Sesion()
+    try:
+        # Efectivo a rendir, agrupado por vendedor (la "plata en la calle").
+        a_rendir = (sesion.query(Cobro)
+                    .filter(Cobro.metodo == "efectivo", Cobro.estado == "a_rendir")
+                    .order_by(Cobro.fecha_hora.asc()).all())
+        por_vendedor = {}
+        for c in a_rendir:
+            vend = c.vendedor or "Sin vendedor"
+            cliente = sesion.get(Cliente, c.cuit)
+            por_vendedor.setdefault(vend, {"total": 0.0, "cobros": []})
+            por_vendedor[vend]["total"] += float(c.monto)
+            por_vendedor[vend]["cobros"].append({
+                "id": c.id,
+                "cliente": cliente.nombre if cliente else c.cuit,
+                "monto": float(c.monto),
+                "fecha": c.fecha_hora,
+            })
+
+        # Transferencias a conciliar contra el extracto.
+        a_conciliar = (sesion.query(Cobro)
+                       .filter(Cobro.metodo == "transferencia", Cobro.estado == "a_conciliar")
+                       .order_by(Cobro.fecha_hora.asc()).all())
+        transferencias = []
+        for c in a_conciliar:
+            cliente = sesion.get(Cliente, c.cuit)
+            transferencias.append({
+                "cliente": cliente.nombre if cliente else c.cuit,
+                "monto": float(c.monto),
+                "fecha": c.fecha_hora,
+            })
+
+        total_a_rendir = sum(float(c.monto) for c in a_rendir)
+        total_a_conciliar = sum(float(c.monto) for c in a_conciliar)
+    finally:
+        sesion.close()
+
+    conciliacion = _ultima_conciliacion["datos"]
+    _ultima_conciliacion["datos"] = None
+
+    return plantillas.TemplateResponse("cobros.html", {
+        "request": request,
+        "por_vendedor": por_vendedor,
+        "transferencias": transferencias,
+        "total_a_rendir": total_a_rendir,
+        "total_a_conciliar": total_a_conciliar,
+        "conciliacion": conciliacion,
+    })
+
+
+@app.post("/cobros/rendir")
+def rendir_cobro(cobro_id: int = Form(...)):
+    """Marca un cobro en efectivo como rendido (el vendedor entregó la plata)."""
+    sesion = Sesion()
+    try:
+        cobros_mod.marcar_rendido(sesion, cobro_id)
+    finally:
+        sesion.close()
+    return RedirectResponse(url="/cobros", status_code=303)
+
+
+@app.post("/cobros/conciliar")
+async def conciliar_extracto(archivo: UploadFile = File(...)):
+    """Sube el extracto del banco y cruza las transferencias por monto."""
+    destino = SUBIDOS_EXTRACTO / f"extracto_{archivo.filename}"
+    with destino.open("wb") as f:
+        shutil.copyfileobj(archivo.file, f)
+
+    sesion = Sesion()
+    try:
+        resultado = cobros_mod.conciliar_con_extracto(sesion, str(destino))
+    finally:
+        sesion.close()
+
+    _ultima_conciliacion["datos"] = resultado
+    return RedirectResponse(url="/cobros", status_code=303)
