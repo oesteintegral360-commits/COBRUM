@@ -23,6 +23,7 @@ from cobranzas import motor
 from cobranzas import planes as planes_mod
 from cobranzas import mensajeria
 from cobranzas import auto
+from cobranzas import respuestas
 
 AQUI = Path(__file__).resolve().parent
 SUBIDOS = AQUI / "subidos"
@@ -143,13 +144,27 @@ def lista_clientes(request: Request):
                 "prioridad": prioridad,
                 "razon": razon,
                 "facturas": facturas_info,
+                "estado_gestion": c.estado_gestion,
+                "gestion_label": respuestas.resumen_estado(c, hoy),
+                "esperando": respuestas.esperando_respuesta(c, hoy),
             })
 
-        # Agenda = los que tienen vencidas, ordenados por puntaje (lo más cobrable hoy).
-        agenda = sorted([t for t in tarjetas if t["tiene_vencidas"]],
+        # Repartimos en grupos según el estado de gestión (Fase 4):
+        #   - reclamos: necesitan atención humana.
+        #   - esperando: dijo que pagó o prometió (pausa informativa).
+        #   - agenda: a cobrar hoy (con vencidas, no pausados), por puntaje.
+        #   - proximos: con deuda pero sin vencidas todavía.
+        reclamos = [t for t in tarjetas if t["estado_gestion"] == "reclamo"]
+        esperando = sorted([t for t in tarjetas
+                            if t["estado_gestion"] != "reclamo" and t["esperando"]],
+                           key=lambda t: t["puntaje"], reverse=True)
+        agenda = sorted([t for t in tarjetas
+                        if t["estado_gestion"] != "reclamo" and not t["esperando"]
+                        and t["tiene_vencidas"]],
                         key=lambda t: t["puntaje"], reverse=True)
-        # Próximos = con deuda pero sin vencidas todavía, ordenados por su vencimiento.
-        proximos = sorted([t for t in tarjetas if not t["tiene_vencidas"]],
+        proximos = sorted([t for t in tarjetas
+                          if t["estado_gestion"] != "reclamo" and not t["esperando"]
+                          and not t["tiene_vencidas"]],
                           key=lambda t: t["max_dias"], reverse=True)
 
         # --- Días de cobranza (DSO aprox) + tendencia vs la foto anterior ---
@@ -194,7 +209,9 @@ def lista_clientes(request: Request):
         "request": request,
         "agenda": agenda,
         "proximos": proximos,
-        "tiene_algo": bool(agenda or proximos),
+        "reclamos": reclamos,
+        "esperando": esperando,
+        "tiene_algo": bool(agenda or proximos or reclamos or esperando),
         "resultado": _ultimo_resultado["datos"],
         "snapshot": snapshot,
         "dso_actual": dso_actual,
@@ -372,6 +389,9 @@ def _datos_cliente(sesion, cuit, hoy):
         "propuesta": propuesta,
         "mensajes": mensajes,
         "botones": mensajeria.BOTONES,
+        "estado_gestion": cliente.estado_gestion,
+        "gestion_label": respuestas.resumen_estado(cliente, hoy),
+        "pausada": respuestas.cobranza_pausada(cliente, hoy),
     }
 
 
@@ -425,6 +445,22 @@ def responder_cliente(cuit: str, boton: str = Form(...)):
                 cuit=cuit, direccion="entrante", fecha_hora=ahora, texto=boton,
             ))
             cliente.ultimo_mensaje_entrante = ahora  # abre la ventana gratis
+            # Fase 4: el botón dispara la acción (pausar, prometer, reclamo).
+            respuestas.aplicar_respuesta(cliente, boton, date.today())
+            sesion.commit()
+    finally:
+        sesion.close()
+    return RedirectResponse(url=f"/cliente/{cuit}", status_code=303)
+
+
+@app.post("/cliente/{cuit}/gestion")
+def cambiar_gestion(cuit: str, accion: str = Form(...)):
+    """Resuelve el estado de gestión: volver a gestión normal (reactivar)."""
+    sesion = Sesion()
+    try:
+        cliente = sesion.get(Cliente, cuit)
+        if cliente is not None and accion == "reactivar":
+            respuestas.reactivar(cliente)
             sesion.commit()
     finally:
         sesion.close()

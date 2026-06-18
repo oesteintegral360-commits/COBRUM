@@ -35,6 +35,22 @@
   </div>
 </div>
 
+{# --- Estado de gestión (Fase 4: qué pasó con la cobranza) --- #}
+{% if c.gestion_label %}
+  <div class="rounded-xl px-4 py-3 mb-6 flex flex-wrap items-center justify-between gap-2
+              {% if c.estado_gestion == 'reclamo' %}bg-red-50 border border-red-200 text-red-900
+              {% elif c.estado_gestion == 'pago_informado' %}bg-green-50 border border-green-200 text-green-900
+              {% else %}bg-blue-50 border border-blue-200 text-blue-900{% endif %}">
+    <span class="font-medium">{{ c.gestion_label }}</span>
+    <form action="/cliente/{{ c.cuit }}/gestion" method="post">
+      <input type="hidden" name="accion" value="reactivar">
+      <button type="submit" class="text-sm rounded-lg bg-white border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50">
+        {% if c.estado_gestion == 'reclamo' %}Marcar resuelto{% else %}Volver a gestión{% endif %}
+      </button>
+    </form>
+  </div>
+{% endif %}
+
 {% if c.falta_telefono %}
   <div class="rounded-xl bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 mb-6 text-sm">
     Este cliente no tiene WhatsApp cargado. El recordatorio iría por <strong>email como respaldo</strong> (simulado).
@@ -42,7 +58,11 @@
 {% endif %}
 
 {# --- Recordatorio propuesto (modo copiloto: el sistema propone, vos mandás) --- #}
-{% if c.tiene_vencidas %}
+{% if c.pausada %}
+  <div class="rounded-xl bg-slate-50 border border-slate-200 text-slate-500 px-4 py-3 mb-6 text-sm">
+    La cobranza de este cliente está <strong>pausada</strong> por el estado de arriba. No le mandamos recordatorios hasta que se resuelva.
+  </div>
+{% elif c.tiene_vencidas %}
 <div class="bg-blue-50 border border-blue-200 rounded-2xl p-5 mb-6">
   <div class="flex items-center justify-between mb-2">
     <span class="text-sm font-semibold text-blue-900">Recordatorio sugerido</span>
