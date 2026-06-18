@@ -99,6 +99,41 @@ class ImportSnapshot(Base):
     total_pendiente: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
 
 
+class Configuracion(Base):
+    """
+    Configuración de la empresa (una sola fila, se crea sola la primera vez).
+
+    Acá vive lo que el usuario fija UNA vez y la app recuerda: el valor del dólar (para
+    convertir los precios de USD a pesos) y en qué plan está. NO se le vuelve a preguntar
+    en cada entrada.
+    """
+
+    __tablename__ = "configuracion"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+
+    # Valor del dólar para mostrar los precios en pesos. Arranca con un valor de ejemplo
+    # hasta que el usuario ponga el real. 'dolar_configurado' nos dice si ya lo tocó.
+    valor_dolar: Mapped[float] = mapped_column(Numeric(14, 2), default=1000)
+    dolar_configurado: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # En qué plan está la empresa (clave del plan: 'arranque' | 'crecimiento' | 'pro').
+    plan_actual: Mapped[str] = mapped_column(String, default="arranque")
+
+    # Asientos extra contratados con el add-on "vendedor adicional".
+    vendedores_adicionales: Mapped[int] = mapped_column(Integer, default=0)
+
+    @classmethod
+    def obtener(cls, sesion) -> "Configuracion":
+        """Devuelve la configuración (la crea con valores por defecto si no existe)."""
+        config = sesion.get(cls, 1)
+        if config is None:
+            config = cls(id=1)
+            sesion.add(config)
+            sesion.commit()
+        return config
+
+
 class Mensaje(Base):
     """
     SEAM (lugar reservado) para la mensajería de WhatsApp de la Fase 3.
