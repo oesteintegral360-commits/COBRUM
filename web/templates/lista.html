@@ -31,6 +31,17 @@
   {% endif %}
 {% endif %}
 
+{# --- Aviso de límite del plan (avisa y sugiere, no bloquea) --- #}
+{% if avisos_limite %}
+  <div class="rounded-xl bg-orange-50 border border-orange-200 text-orange-900 px-4 py-3 mb-6">
+    <strong>Estás llegando al límite de tu plan {{ plan_actual.nombre }}.</strong>
+    <ul class="text-sm mt-1 list-disc list-inside space-y-0.5">
+      {% for aviso in avisos_limite %}<li>{{ aviso }}</li>{% endfor %}
+    </ul>
+    <a href="/planes" class="inline-block mt-2 text-sm font-semibold text-orange-800 underline">Ver planes</a>
+  </div>
+{% endif %}
+
 {# --- Encabezado de la lista --- #}
 <div class="flex items-end justify-between mb-6">
   <div>

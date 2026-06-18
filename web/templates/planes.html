@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block titulo %}COBRUM — Planes{% endblock %}
+
+{% block contenido %}
+
+<div class="text-center mb-8">
+  <h1 class="text-3xl sm:text-4xl font-bold text-slate-900">Un plan para cada etapa de tu negocio</h1>
+  <p class="text-slate-500 mt-2 max-w-2xl mx-auto">
+    Pagás por vendedor que usa la agenda. Precios en dólares, los ves también en pesos al
+    valor que vos configurás.
+  </p>
+
+  {# Toggle mensual / anual #}
+  <div class="inline-flex items-center bg-white border border-slate-200 rounded-full p-1 mt-6 text-sm">
+    <a href="/planes?periodo=mensual"
+       class="px-4 py-1.5 rounded-full {% if not anual %}bg-blue-600 text-white{% else %}text-slate-600{% endif %}">
+       Mensual
+    </a>
+    <a href="/planes?periodo=anual"
+       class="px-4 py-1.5 rounded-full {% if anual %}bg-blue-600 text-white{% else %}text-slate-600{% endif %}">
+       Anual <span class="text-xs {% if anual %}text-blue-100{% else %}text-green-600{% endif %}">· {{ meses_gratis }} meses gratis</span>
+    </a>
+  </div>
+</div>
+
+{# Aviso suave si todavía no configuró el dólar real #}
+{% if not dolar_configurado %}
+  <div class="rounded-xl bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 mb-6 text-sm text-center">
+    Los precios en pesos están calculados a un dólar de ejemplo (${{ "%.0f"|format(valor_dolar) }}).
+    <a href="/configuracion" class="font-semibold underline">Poné el valor real acá</a>.
+  </div>
+{% endif %}
+
+<div class="grid gap-6 md:grid-cols-3 items-start">
+{% for t in tarjetas %}
+  <div class="relative bg-white rounded-2xl border p-6 flex flex-col
+              {% if t.destacado %}border-blue-500 shadow-lg md:-mt-2 md:mb-2{% else %}border-slate-200 shadow-sm{% endif %}">
+
+    {% if t.destacado %}
+      <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full">
+        El más elegido
+      </span>
+    {% endif %}
+
+    <h2 class="text-xl font-bold text-slate-900">{{ t.nombre }}</h2>
+    <p class="text-sm text-slate-500 mt-1 min-h-[40px]">{{ t.resumen }}</p>
+
+    <div class="mt-4">
+      {% if t.desde %}<span class="text-sm text-slate-400">desde</span>{% endif %}
+      <div class="flex items-baseline gap-1">
+        <span class="text-4xl font-extrabold text-slate-900">USD {{ t.usd_mes }}</span>
+        <span class="text-slate-500">/mes</span>
+      </div>
+      <div class="text-sm text-slate-500 mt-1">≈ ${{ "{:,.0f}".format(t.pesos_mes).replace(",", ".") }} por mes</div>
+      {% if anual %}<div class="text-xs text-green-600 mt-1">Pagando el año completo (2 meses gratis)</div>{% endif %}
+    </div>
+
+    <div class="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 mt-4">{{ t.texto_limites }}</div>
+
+    <ul class="mt-5 space-y-2 text-sm text-slate-700 flex-1">
+      {% for b in t.beneficios %}
+        <li class="flex gap-2 {% if loop.first and ('Todo lo de' in b) %}font-semibold text-slate-900{% endif %}">
+          {% if not (loop.first and ('Todo lo de' in b)) %}<span class="text-green-500">✓</span>{% endif %}
+          <span>{{ b }}</span>
+        </li>
+      {% endfor %}
+      {% if t.permite_addon %}
+        <li class="flex gap-2 text-slate-500 pt-1">
+          <span>＋</span><span>Vendedor adicional: USD {{ addon_usd }}/mes c/u</span>
+        </li>
+      {% endif %}
+    </ul>
+
+    {% if t.es_actual %}
+      <div class="mt-6 text-center rounded-xl bg-green-50 text-green-800 font-semibold py-3 border border-green-200">
+        ✓ Tu plan actual
+      </div>
+    {% else %}
+      <form action="/planes/elegir" method="post" class="mt-6">
+        <input type="hidden" name="clave" value="{{ t.clave }}">
+        <button type="submit"
+                class="w-full rounded-xl py-3 font-semibold transition
+                       {% if t.destacado %}bg-blue-600 text-white hover:bg-blue-700
+                       {% else %}bg-slate-100 text-slate-800 hover:bg-slate-200{% endif %}">
+          Elegir {{ t.nombre }}
+        </button>
+      </form>
+    {% endif %}
+  </div>
+{% endfor %}
+</div>
+
+<p class="text-center text-xs text-slate-400 mt-8">
+  Tu plan queda guardado: no te lo volvemos a preguntar.
+  Lo podés cambiar cuando quieras desde acá.
+</p>
+
+{% endblock %}

@@ -11,15 +11,16 @@ from datetime import date
 from pathlib import Path
 import shutil
 
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 from cobranzas.db import Sesion, crear_tablas
-from cobranzas.modelos import Cliente, ImportSnapshot
+from cobranzas.modelos import Cliente, ImportSnapshot, Configuracion
 from cobranzas.importador import importar_foto
 from cobranzas import motor
+from cobranzas import planes as planes_mod
 
 AQUI = Path(__file__).resolve().parent
 SUBIDOS = AQUI / "subidos"
@@ -103,7 +104,25 @@ def lista_clientes(request: Request):
         # Ordenamos los clientes por deuda total (de mayor a menor).
         tarjetas.sort(key=lambda t: t["total"], reverse=True)
 
-        snapshot = sesion.query(ImportSnapshot).order_by(ImportSnapshot.id.desc()).first()
+        snap = sesion.query(ImportSnapshot).order_by(ImportSnapshot.id.desc()).first()
+        # Lo pasamos como datos planos para que la plantilla no dependa de la sesión.
+        snapshot = None
+        if snap is not None:
+            snapshot = {
+                "nombre_archivo": snap.nombre_archivo,
+                "cantidad_facturas": snap.cantidad_facturas,
+                "total_pendiente": float(snap.total_pendiente),
+            }
+
+        # --- Aviso de límite del plan (avisar y sugerir, nunca bloquear) ---
+        config = Configuracion.obtener(sesion)
+        plan = planes_mod.plan_por_clave(config.plan_actual)
+        cantidad_clientes = len(tarjetas)
+        # Vendedores distintos en uso (entre los clientes con deuda).
+        vendedores = {t["vendedor"].strip() for t in tarjetas if t["vendedor"].strip()}
+        avisos_limite = planes_mod.chequear_limites(
+            plan, len(vendedores), cantidad_clientes, config.vendedores_adicionales
+        )
     finally:
         sesion.close()
 
@@ -113,4 +132,97 @@ def lista_clientes(request: Request):
         "resultado": _ultimo_resultado["datos"],
         "snapshot": snapshot,
         "hoy": hoy,
+        "avisos_limite": avisos_limite,
+        "plan_actual": plan,
     })
+
+
+@app.get("/planes", response_class=HTMLResponse)
+def pagina_planes(request: Request, periodo: str = "mensual"):
+    """Landing de precios: las 3 tarjetas, con precio en USD y en pesos."""
+    sesion = Sesion()
+    try:
+        config = Configuracion.obtener(sesion)
+        valor_dolar = float(config.valor_dolar)
+        plan_actual_clave = config.plan_actual
+        dolar_configurado = config.dolar_configurado
+    finally:
+        sesion.close()
+
+    anual = (periodo == "anual")
+    tarjetas = []
+    for p in planes_mod.PLANES:
+        precio_usd = p.precio_anual_usd() if anual else p.precio_usd
+        # En anual, mostramos el equivalente mensual prorrateado (precio_año / 12).
+        usd_por_mes = (p.precio_anual_usd() / 12) if anual else p.precio_usd
+        tarjetas.append({
+            "clave": p.clave,
+            "nombre": p.nombre,
+            "desde": p.desde,
+            "destacado": p.destacado,
+            "resumen": p.resumen,
+            "texto_limites": p.texto_limites,
+            "beneficios": p.beneficios,
+            "permite_addon": p.permite_addon,
+            "usd_mes": round(usd_por_mes),
+            "pesos_mes": round(usd_por_mes * valor_dolar),
+            "es_actual": (p.clave == plan_actual_clave),
+        })
+
+    return plantillas.TemplateResponse("planes.html", {
+        "request": request,
+        "tarjetas": tarjetas,
+        "anual": anual,
+        "valor_dolar": valor_dolar,
+        "dolar_configurado": dolar_configurado,
+        "addon_usd": planes_mod.ADDON_VENDEDOR_USD,
+        "meses_gratis": planes_mod.MESES_GRATIS_ANUAL,
+    })
+
+
+@app.post("/planes/elegir")
+def elegir_plan(clave: str = Form(...)):
+    """Guarda el plan elegido (se recuerda; no se vuelve a preguntar)."""
+    sesion = Sesion()
+    try:
+        config = Configuracion.obtener(sesion)
+        config.plan_actual = planes_mod.plan_por_clave(clave).clave
+        sesion.commit()
+    finally:
+        sesion.close()
+    return RedirectResponse(url="/planes", status_code=303)
+
+
+@app.get("/configuracion", response_class=HTMLResponse)
+def pagina_configuracion(request: Request, guardado: bool = False):
+    """Pantalla donde se fija el valor del dólar (una vez; queda guardado)."""
+    sesion = Sesion()
+    try:
+        config = Configuracion.obtener(sesion)
+        datos = {
+            "valor_dolar": float(config.valor_dolar),
+            "dolar_configurado": config.dolar_configurado,
+            "plan_actual": planes_mod.plan_por_clave(config.plan_actual),
+            "vendedores_adicionales": config.vendedores_adicionales,
+        }
+    finally:
+        sesion.close()
+    return plantillas.TemplateResponse("configuracion.html", {
+        "request": request, "config": datos, "guardado": guardado,
+    })
+
+
+@app.post("/configuracion")
+def guardar_configuracion(valor_dolar: float = Form(...), vendedores_adicionales: int = Form(0)):
+    """Guarda el valor del dólar y los vendedores adicionales contratados."""
+    sesion = Sesion()
+    try:
+        config = Configuracion.obtener(sesion)
+        if valor_dolar > 0:
+            config.valor_dolar = valor_dolar
+            config.dolar_configurado = True
+        config.vendedores_adicionales = max(0, vendedores_adicionales)
+        sesion.commit()
+    finally:
+        sesion.close()
+    return RedirectResponse(url="/configuracion?guardado=true", status_code=303)
