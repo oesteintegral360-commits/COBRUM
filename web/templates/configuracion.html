@@ -15,6 +15,16 @@
   <form action="/configuracion" method="post" class="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
 
     <div>
+      <label for="nombre_negocio" class="block font-semibold text-slate-800">Nombre de tu negocio</label>
+      <p class="text-xs text-slate-500 mb-2">
+        Es el nombre con el que el cliente ve los mensajes de WhatsApp (no aparece COBRUM).
+      </p>
+      <input id="nombre_negocio" name="nombre_negocio" type="text"
+             value="{{ config.nombre_negocio }}"
+             class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-blue-500 focus:outline-none">
+    </div>
+
+    <div>
       <label for="valor_dolar" class="block font-semibold text-slate-800">Valor del dólar (en pesos)</label>
       <p class="text-xs text-slate-500 mb-2">
         Lo usamos para mostrarte los precios de los planes en pesos. Poné el dólar de hoy.

@@ -59,6 +59,13 @@
         {% endif %}
       {% endfor %}
     </div>
+
+    {% if mostrar_prioridad %}
+      <a href="/cliente/{{ t.cuit }}"
+         class="mt-4 block text-center rounded-xl bg-blue-600 text-white py-2.5 font-semibold hover:bg-blue-700 transition">
+        Enviar recordatorio
+      </a>
+    {% endif %}
   </div>
 {% endmacro %}
 
@@ -104,7 +111,7 @@
 
 {# --- Indicador de Días de cobranza (DSO aprox) + total --- #}
 {% if tiene_algo %}
-<div class="grid sm:grid-cols-2 gap-4 mb-8">
+<div class="grid sm:grid-cols-3 gap-4 mb-8">
   <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
     <div class="text-sm text-slate-500">Días de cobranza <span class="text-slate-400">(aprox.)</span></div>
     <div class="flex items-baseline gap-3 mt-1">
@@ -131,6 +138,18 @@
     </div>
     <p class="text-xs text-slate-400 mt-1">
       {% if snapshot %}{{ snapshot.cantidad_facturas }} facturas pendientes · última foto: {{ snapshot.nombre_archivo }}{% endif %}
+    </p>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-sm text-slate-500">WhatsApp este mes</div>
+    <div class="flex items-baseline gap-2 mt-1">
+      <span class="text-4xl font-extrabold text-slate-900">{{ plantillas_mes }}</span>
+      <span class="text-slate-400">plantillas</span>
+    </div>
+    <p class="text-xs text-slate-400 mt-1">
+      Costo estimado: ${{ "{:,.0f}".format(costo_pesos).replace(",", ".") }} ·
+      las respuestas dentro de las 24 hs son gratis
     </p>
   </div>
 </div>

@@ -7,7 +7,7 @@ Es a propósito mínima y "acción-first": una sola acción importante por panta
   - GET  /clientes -> la lista de clientes con sus facturas, vencidos y tramos.
 """
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 import shutil
 
@@ -17,10 +17,11 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 from cobranzas.db import Sesion, crear_tablas
-from cobranzas.modelos import Cliente, ImportSnapshot, Configuracion
+from cobranzas.modelos import Cliente, ImportSnapshot, Configuracion, Mensaje
 from cobranzas.importador import importar_foto
 from cobranzas import motor
 from cobranzas import planes as planes_mod
+from cobranzas import mensajeria
 
 AQUI = Path(__file__).resolve().parent
 SUBIDOS = AQUI / "subidos"
@@ -164,6 +165,15 @@ def lista_clientes(request: Request):
         avisos_limite = planes_mod.chequear_limites(
             plan, len(vendedores), cantidad_clientes, config.vendedores_adicionales
         )
+
+        # --- Contador de costo de WhatsApp: plantillas enviadas este mes ---
+        inicio_mes = datetime(hoy.year, hoy.month, 1)
+        plantillas_mes = (sesion.query(Mensaje)
+                          .filter(Mensaje.direccion == "saliente",
+                                  Mensaje.tipo == "plantilla",
+                                  Mensaje.fecha_hora >= inicio_mes).count())
+        costo_usd = plantillas_mes * mensajeria.COSTO_PLANTILLA_USD
+        costo_pesos = costo_usd * float(config.valor_dolar)
     finally:
         sesion.close()
 
@@ -179,6 +189,8 @@ def lista_clientes(request: Request):
         "hoy": hoy,
         "avisos_limite": avisos_limite,
         "plan_actual": plan,
+        "plantillas_mes": plantillas_mes,
+        "costo_pesos": costo_pesos,
     })
 
 
@@ -249,6 +261,7 @@ def pagina_configuracion(request: Request, guardado: bool = False):
             "dolar_configurado": config.dolar_configurado,
             "plan_actual": planes_mod.plan_por_clave(config.plan_actual),
             "vendedores_adicionales": config.vendedores_adicionales,
+            "nombre_negocio": config.nombre_negocio,
         }
     finally:
         sesion.close()
@@ -258,8 +271,9 @@ def pagina_configuracion(request: Request, guardado: bool = False):
 
 
 @app.post("/configuracion")
-def guardar_configuracion(valor_dolar: float = Form(...), vendedores_adicionales: int = Form(0)):
-    """Guarda el valor del dólar y los vendedores adicionales contratados."""
+def guardar_configuracion(valor_dolar: float = Form(...), vendedores_adicionales: int = Form(0),
+                          nombre_negocio: str = Form("")):
+    """Guarda el valor del dólar, los vendedores adicionales y el nombre del negocio."""
     sesion = Sesion()
     try:
         config = Configuracion.obtener(sesion)
@@ -267,7 +281,123 @@ def guardar_configuracion(valor_dolar: float = Form(...), vendedores_adicionales
             config.valor_dolar = valor_dolar
             config.dolar_configurado = True
         config.vendedores_adicionales = max(0, vendedores_adicionales)
+        if nombre_negocio.strip():
+            config.nombre_negocio = nombre_negocio.strip()
         sesion.commit()
     finally:
         sesion.close()
     return RedirectResponse(url="/configuracion?guardado=true", status_code=303)
+
+
+def _datos_cliente(sesion, cuit, hoy):
+    """
+    Junta lo que necesita la pantalla de conversación de un cliente: sus datos, la deuda
+    vencida, en qué etapa de tono va, si la ventana de 24 hs está abierta, el texto del
+    próximo recordatorio y el historial de mensajes. Devuelve None si el cliente no existe.
+    """
+    cliente = sesion.get(Cliente, cuit)
+    if cliente is None:
+        return None
+
+    config = Configuracion.obtener(sesion)
+    facturas = list(cliente.facturas)
+    vencidas = [f for f in facturas if motor.esta_vencida(f, hoy)]
+    total_vencido = sum((float(f.saldo_pendiente) for f in vencidas), 0.0)
+    max_dias = max((motor.dias_atraso(f, hoy) for f in vencidas), default=0)
+    # La factura más vieja vencida (la que nombramos en el mensaje).
+    factura_ref = ""
+    if vencidas:
+        factura_ref = max(vencidas, key=lambda f: motor.dias_atraso(f, hoy)).numero_factura
+
+    ahora = datetime.now()
+    etapa = mensajeria.etapa_por_dias(max_dias)
+    ventana = mensajeria.ventana_abierta(cliente.ultimo_mensaje_entrante, ahora)
+    tipo_proximo = mensajeria.tipo_de_mensaje(cliente.ultimo_mensaje_entrante, ahora)
+
+    propuesta = ""
+    if vencidas:
+        propuesta = mensajeria.redactar_recordatorio(
+            cliente.nombre or "cliente", config.nombre_negocio, cliente.vendedor_asignado,
+            factura_ref, total_vencido, max_dias, etapa)
+
+    historial = (sesion.query(Mensaje).filter(Mensaje.cuit == cuit)
+                 .order_by(Mensaje.fecha_hora.asc(), Mensaje.id.asc()).all())
+    mensajes = [{
+        "direccion": m.direccion,
+        "texto": m.texto,
+        "tipo": m.tipo,
+        "etapa": m.etapa,
+        "fecha_hora": m.fecha_hora,
+    } for m in historial]
+
+    return {
+        "cuit": cliente.cuit,
+        "nombre": cliente.nombre or "(sin nombre)",
+        "vendedor": cliente.vendedor_asignado or "",
+        "telefono": cliente.telefono_whatsapp or "",
+        "falta_telefono": cliente.falta_telefono,
+        "total_vencido": total_vencido,
+        "tiene_vencidas": bool(vencidas),
+        "etapa": etapa,
+        "ventana_abierta": ventana,
+        "tipo_proximo": tipo_proximo,
+        "propuesta": propuesta,
+        "mensajes": mensajes,
+        "botones": mensajeria.BOTONES,
+    }
+
+
+@app.get("/cliente/{cuit}", response_class=HTMLResponse)
+def pagina_cliente(request: Request, cuit: str):
+    """Conversación con un cliente: ver el recordatorio propuesto, enviarlo y simular respuestas."""
+    sesion = Sesion()
+    try:
+        datos = _datos_cliente(sesion, cuit, date.today())
+    finally:
+        sesion.close()
+    if datos is None:
+        return RedirectResponse(url="/clientes", status_code=303)
+    return plantillas.TemplateResponse("cliente.html", {"request": request, "c": datos})
+
+
+@app.post("/cliente/{cuit}/enviar")
+def enviar_recordatorio(cuit: str):
+    """Registra el envío (simulado) del recordatorio propuesto, marcando si es plantilla o gratis."""
+    hoy = date.today()
+    sesion = Sesion()
+    try:
+        datos = _datos_cliente(sesion, cuit, hoy)
+        if datos and datos["tiene_vencidas"]:
+            sesion.add(Mensaje(
+                cuit=cuit,
+                direccion="saliente",
+                tipo=datos["tipo_proximo"],   # 'plantilla' (con costo) o 'respuesta_ventana' (gratis)
+                etapa=datos["etapa"],
+                fecha_hora=datetime.now(),
+                texto=datos["propuesta"],
+            ))
+            sesion.commit()
+    finally:
+        sesion.close()
+    return RedirectResponse(url=f"/cliente/{cuit}", status_code=303)
+
+
+@app.post("/cliente/{cuit}/responder")
+def responder_cliente(cuit: str, boton: str = Form(...)):
+    """
+    Simula que el cliente toca uno de los 3 botones. Cuenta como mensaje ENTRANTE y abre
+    la ventana gratis de 24 hs.
+    """
+    sesion = Sesion()
+    try:
+        cliente = sesion.get(Cliente, cuit)
+        if cliente is not None and boton in mensajeria.BOTONES:
+            ahora = datetime.now()
+            sesion.add(Mensaje(
+                cuit=cuit, direccion="entrante", fecha_hora=ahora, texto=boton,
+            ))
+            cliente.ultimo_mensaje_entrante = ahora  # abre la ventana gratis
+            sesion.commit()
+    finally:
+        sesion.close()
+    return RedirectResponse(url=f"/cliente/{cuit}", status_code=303)
