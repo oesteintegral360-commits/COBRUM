@@ -128,6 +128,12 @@ class Configuracion(Base):
     # identidad del envío es del negocio/vendedor, nunca de la plataforma.
     nombre_negocio: Mapped[str] = mapped_column(String, default="Distribuidora del Oeste")
 
+    # Cómo se mandan los recordatorios:
+    #   'copiloto'   -> el sistema propone y un humano toca "Enviar".
+    #   'automatico' -> el sistema manda solo los que corresponden (al subir la foto o
+    #                   al tocar "Ejecutar cobranza de hoy"), sin apretar botón por cliente.
+    modo_envio: Mapped[str] = mapped_column(String, default="copiloto")
+
     # Asientos extra contratados con el add-on "vendedor adicional".
     vendedores_adicionales: Mapped[int] = mapped_column(Integer, default=0)
 
