@@ -42,7 +42,7 @@ def cobranza_pausada(cliente, hoy) -> bool:
       - prometió pagar y todavía está dentro del plazo.
     """
     estado = cliente.estado_gestion
-    if estado in ("pago_informado", "reclamo"):
+    if estado in ("pago_informado", "reclamo", "pagado"):
         return True
     if estado == "promesa_pago" and cliente.gestion_hasta and hoy < cliente.gestion_hasta:
         return True
@@ -50,9 +50,9 @@ def cobranza_pausada(cliente, hoy) -> bool:
 
 
 def esperando_respuesta(cliente, hoy) -> bool:
-    """True si está en una pausa 'informativa' (dijo que pagó o promesa vigente)."""
+    """True si está en una pausa 'informativa' (dijo que pagó, promesa vigente o ya cobrado)."""
     estado = cliente.estado_gestion
-    if estado == "pago_informado":
+    if estado in ("pago_informado", "pagado"):
         return True
     if estado == "promesa_pago" and cliente.gestion_hasta and hoy < cliente.gestion_hasta:
         return True
@@ -62,6 +62,8 @@ def esperando_respuesta(cliente, hoy) -> bool:
 def resumen_estado(cliente, hoy) -> str:
     """Etiqueta humana del estado de gestión (vacío si está activo y sin novedad)."""
     estado = cliente.estado_gestion
+    if estado == "pagado":
+        return "✓ Cobro registrado — seguimiento en Caja"
     if estado == "pago_informado":
         return "🧾 Dijo que pagó — a verificar contra el extracto"
     if estado == "reclamo":

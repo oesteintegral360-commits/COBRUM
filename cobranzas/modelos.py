@@ -112,6 +112,35 @@ class ImportSnapshot(Base):
     dso_aprox: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class Cobro(Base):
+    """
+    Un cobro registrado (Fase 5). Es la forma de COBRUM de seguir un pago desde que se
+    cobra hasta que la plata llega de verdad a la empresa.
+
+    Según el método, tiene su propio ciclo:
+      - efectivo:      'a_rendir'   -> 'rendido'    (el vendedor entrega/deposita la plata)
+      - transferencia: 'a_conciliar'-> 'conciliado' (se cruza contra el extracto del banco)
+    """
+
+    __tablename__ = "cobros"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(ForeignKey("clientes.cuit"))
+    monto: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+
+    # 'efectivo' o 'transferencia'.
+    metodo: Mapped[str] = mapped_column(String)
+
+    # Quién cobró (clave en el modelo centrado en el vendedor). Se guarda una copia del
+    # nombre por si el cliente cambia de vendedor después.
+    vendedor: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    fecha_hora: Mapped[datetime] = mapped_column(DateTime)
+
+    # 'a_rendir' | 'rendido' (efectivo) · 'a_conciliar' | 'conciliado' (transferencia).
+    estado: Mapped[str] = mapped_column(String, default="a_rendir")
+
+
 class Configuracion(Base):
     """
     Configuración de la empresa (una sola fila, se crea sola la primera vez).
