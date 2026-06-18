@@ -1,0 +1,20 @@
+# Entorno virtual de Python
+.venv/
+venv/
+
+# Base de datos local (cada uno tiene la suya)
+*.db
+datos/cobranzas.db
+
+# Archivos subidos por el usuario en la web
+web/subidos/
+
+# Cache de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Cosas del sistema / editores
+.DS_Store
+.idea/
+.vscode/
