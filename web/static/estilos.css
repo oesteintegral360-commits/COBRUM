@@ -1,0 +1,11 @@
+/* Estilos propios de COBRUM.
+   La mayor parte del diseño viene de Tailwind (CDN). Acá dejamos solo ajustes finos. */
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Tipografía un poco más amable en todo el sitio. */
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}

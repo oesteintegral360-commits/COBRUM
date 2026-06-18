@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cobrum",
+      "runtimeExecutable": ".venv/bin/uvicorn",
+      "runtimeArgs": ["web.app:app", "--port", "8011"],
+      "port": 8011
+    }
+  ]
+}

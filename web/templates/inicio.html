@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block titulo %}COBRUM — Subir foto{% endblock %}
+
+{% block contenido %}
+<div class="text-center py-10">
+  <h1 class="text-3xl font-bold text-slate-900 mb-2">Tu cobranza de hoy, en un solo lugar</h1>
+  <p class="text-slate-500 mb-10 max-w-xl mx-auto">
+    Subí el Excel con lo que te deben (la "foto" de tu sistema). Nosotros identificamos
+    a cada cliente solo y te mostramos quién está vencido y hace cuánto.
+  </p>
+
+  <!-- Una sola acción posible por pantalla: el botón grande para subir -->
+  <form action="/subir" method="post" enctype="multipart/form-data" class="max-w-md mx-auto">
+    <label for="archivo"
+           class="block cursor-pointer rounded-2xl border-2 border-dashed border-blue-300 bg-white
+                  px-6 py-12 hover:border-blue-500 hover:bg-blue-50 transition">
+      <div class="text-5xl mb-3">📄</div>
+      <div class="text-lg font-semibold text-slate-800">Elegí tu archivo Excel</div>
+      <div class="text-sm text-slate-400 mt-1">Formato .xlsx — el export de tu sistema contable</div>
+      <input id="archivo" name="archivo" type="file" accept=".xlsx,.xls" required
+             class="mt-4 block w-full text-sm text-slate-600
+                    file:mr-4 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2
+                    file:text-white file:font-medium hover:file:bg-blue-700 file:cursor-pointer">
+    </label>
+
+    <button type="submit"
+            class="mt-6 w-full rounded-xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white
+                   shadow-sm hover:bg-blue-700 active:bg-blue-800 transition">
+      Subir foto (Excel)
+    </button>
+  </form>
+
+  <p class="text-xs text-slate-400 mt-6">
+    ¿Todavía no tenés un archivo? Generá los de ejemplo con
+    <code class="bg-slate-100 px-1 rounded">python generar_ejemplos.py</code>
+  </p>
+</div>
+{% endblock %}
