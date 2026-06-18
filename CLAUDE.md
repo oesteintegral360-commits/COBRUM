@@ -106,7 +106,7 @@ COBRUM es una **"capa de acción"** sobre el sistema contable que la empresa ya 
 ### Cómo se construye
 En **5 fases**, frenando a chequear al final de cada una. Partes chicas, commits chicos, honestidad sobre la simplicidad. En cada fase: investigar lo mejor del mundo (EEUU/Europa/Asia) y proponer mejoras baratas, sin meter complejidad de más en el MVP.
 - **Fase 1 (hecha): el motor.** Importar Excel, normalizar/validar CUIT, foto que reemplaza sin duplicar, calcular vencidos / días de atraso / tramos / total por cliente.
-- **Fase 2:** agenda priorizada (worklist) + DSO. (seam `puntaje_cobrabilidad` listo)
-- **Fase 3:** mensajería WhatsApp (simulada primero). (seams `Mensaje`, `ultimo_mensaje_entrante` listos)
+- **Fase 2 (hecha): agenda priorizada + DSO.** `puntaje_cobrabilidad` balanceado (monto + atraso) ordena "a quién cobrar hoy"; `dias_cobranza_aprox` (proxy del DSO, promedio de atraso ponderado por monto) con tendencia foto a foto guardada en `ImportSnapshot.dso_aprox`.
+- **Fase 3 (hecha): mensajería WhatsApp (simulada).** Modo copiloto: el sistema propone el recordatorio (etapa de tono por días, firmado por vendedor/negocio en `cobranzas/mensajeria.py`), marca cada saliente `plantilla` (con costo) o `respuesta_ventana` (gratis si hay ventana de 24 hs abierta). Los 3 botones simulan respuesta entrante y abren la ventana (`Cliente.ultimo_mensaje_entrante`). Contador de costo de plantillas del mes en la agenda. Conversación por cliente en `/cliente/{cuit}`.
 - **Fase 4:** lógica de respuestas.
 - **Fase 5:** cruce comprobante vs extracto.
