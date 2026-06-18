@@ -22,6 +22,7 @@ from cobranzas.importador import importar_foto
 from cobranzas import motor
 from cobranzas import planes as planes_mod
 from cobranzas import mensajeria
+from cobranzas import auto
 
 AQUI = Path(__file__).resolve().parent
 SUBIDOS = AQUI / "subidos"
@@ -36,6 +37,8 @@ crear_tablas()
 
 # Guardamos el último resultado de import para mostrar el resumen tras subir.
 _ultimo_resultado = {"datos": None}
+# Y el resumen de la última cobranza automática, para avisarle a la empresa qué se mandó solo.
+_ultima_cobranza = {"resumen": None}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -54,6 +57,12 @@ async def subir(archivo: UploadFile = File(...)):
     sesion = Sesion()
     try:
         resultado = importar_foto(sesion, str(destino), nombre_archivo=archivo.filename)
+        # Si la empresa está en modo automático, mandamos sola la cobranza de la foto nueva.
+        config = Configuracion.obtener(sesion)
+        if not resultado.error and config.modo_envio == "automatico":
+            _ultima_cobranza["resumen"] = auto.ejecutar_cobranza(sesion, date.today())
+        else:
+            _ultima_cobranza["resumen"] = None
     finally:
         sesion.close()
 
@@ -177,6 +186,10 @@ def lista_clientes(request: Request):
     finally:
         sesion.close()
 
+    # El resumen de la cobranza automática se muestra una sola vez (patrón "flash").
+    cobranza_flash = _ultima_cobranza["resumen"]
+    _ultima_cobranza["resumen"] = None
+
     return plantillas.TemplateResponse("lista.html", {
         "request": request,
         "agenda": agenda,
@@ -191,7 +204,20 @@ def lista_clientes(request: Request):
         "plan_actual": plan,
         "plantillas_mes": plantillas_mes,
         "costo_pesos": costo_pesos,
+        "modo_envio": config.modo_envio,
+        "cobranza": cobranza_flash,
     })
+
+
+@app.post("/cobranza/ejecutar")
+def ejecutar_cobranza_ahora():
+    """Manda sola, de una, la cobranza de hoy (recordatorios a quien corresponda)."""
+    sesion = Sesion()
+    try:
+        _ultima_cobranza["resumen"] = auto.ejecutar_cobranza(sesion, date.today())
+    finally:
+        sesion.close()
+    return RedirectResponse(url="/clientes", status_code=303)
 
 
 @app.get("/planes", response_class=HTMLResponse)
@@ -262,6 +288,7 @@ def pagina_configuracion(request: Request, guardado: bool = False):
             "plan_actual": planes_mod.plan_por_clave(config.plan_actual),
             "vendedores_adicionales": config.vendedores_adicionales,
             "nombre_negocio": config.nombre_negocio,
+            "modo_envio": config.modo_envio,
         }
     finally:
         sesion.close()
@@ -272,8 +299,8 @@ def pagina_configuracion(request: Request, guardado: bool = False):
 
 @app.post("/configuracion")
 def guardar_configuracion(valor_dolar: float = Form(...), vendedores_adicionales: int = Form(0),
-                          nombre_negocio: str = Form("")):
-    """Guarda el valor del dólar, los vendedores adicionales y el nombre del negocio."""
+                          nombre_negocio: str = Form(""), modo_envio: str = Form("copiloto")):
+    """Guarda el valor del dólar, los vendedores adicionales, el nombre y el modo de envío."""
     sesion = Sesion()
     try:
         config = Configuracion.obtener(sesion)
@@ -283,6 +310,7 @@ def guardar_configuracion(valor_dolar: float = Form(...), vendedores_adicionales
         config.vendedores_adicionales = max(0, vendedores_adicionales)
         if nombre_negocio.strip():
             config.nombre_negocio = nombre_negocio.strip()
+        config.modo_envio = "automatico" if modo_envio == "automatico" else "copiloto"
         sesion.commit()
     finally:
         sesion.close()

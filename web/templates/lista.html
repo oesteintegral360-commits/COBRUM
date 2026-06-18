@@ -98,6 +98,22 @@
   {% endif %}
 {% endif %}
 
+{# --- Resumen de la cobranza automática (lo que se mandó solo) --- #}
+{% if cobranza %}
+  <div class="rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 px-4 py-3 mb-6">
+    <strong>Cobranza automática ✓</strong>
+    <div class="text-sm mt-1 text-indigo-800">
+      {% if cobranza.enviados %}
+        Mandé solo {{ cobranza.enviados }} recordatorio(s)
+        ({{ cobranza.plantillas }} plantilla(s) · {{ cobranza.gratis }} gratis dentro de ventana).
+      {% else %}
+        No hizo falta mandar nada nuevo.
+      {% endif %}
+      {% if cobranza.salteados %} Salteé {{ cobranza.salteados }} que ya tenían aviso reciente.{% endif %}
+    </div>
+  </div>
+{% endif %}
+
 {# --- Aviso de límite del plan --- #}
 {% if avisos_limite %}
   <div class="rounded-xl bg-orange-50 border border-orange-200 text-orange-900 px-4 py-3 mb-6">
@@ -169,12 +185,26 @@
 
 {# --- Agenda: a quién cobrar hoy --- #}
 {% if agenda %}
-  <div class="flex items-end justify-between mb-4">
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
     <div>
       <h1 class="text-2xl font-bold text-slate-900">A quién cobrar hoy</h1>
       <p class="text-sm text-slate-500">Ordenado por lo más cobrable: cuánto te deben y hace cuánto.</p>
+      {% if modo_envio == 'automatico' %}
+        <span class="inline-block mt-1 text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">⚡ Modo automático: los recordatorios salen solos</span>
+      {% else %}
+        <span class="inline-block mt-1 text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">👤 Modo copiloto: vos tocás “Enviar” en cada uno</span>
+      {% endif %}
     </div>
-    <a href="/" class="text-sm rounded-lg bg-blue-600 text-white px-4 py-2 hover:bg-blue-700">Subir otra foto</a>
+    <div class="flex gap-2">
+      {% if modo_envio == 'automatico' %}
+        <form action="/cobranza/ejecutar" method="post">
+          <button type="submit" class="text-sm rounded-lg bg-indigo-600 text-white px-4 py-2 hover:bg-indigo-700 font-semibold">
+            ⚡ Ejecutar cobranza de hoy
+          </button>
+        </form>
+      {% endif %}
+      <a href="/" class="text-sm rounded-lg bg-blue-600 text-white px-4 py-2 hover:bg-blue-700">Subir otra foto</a>
+    </div>
   </div>
   <div class="space-y-4 mb-10">
     {% for t in agenda %}{{ tarjeta_cliente(t, true) }}{% endfor %}

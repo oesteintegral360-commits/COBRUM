@@ -25,6 +25,31 @@
     </div>
 
     <div>
+      <span class="block font-semibold text-slate-800">¿Cómo se mandan los recordatorios?</span>
+      <p class="text-xs text-slate-500 mb-2">Podés cambiarlo cuando quieras.</p>
+      <div class="space-y-2">
+        <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer
+                      {% if config.modo_envio != 'automatico' %}border-blue-500 bg-blue-50{% else %}border-slate-300{% endif %}">
+          <input type="radio" name="modo_envio" value="copiloto" class="mt-1"
+                 {% if config.modo_envio != 'automatico' %}checked{% endif %}>
+          <span>
+            <span class="font-medium text-slate-800">Copiloto</span>
+            <span class="block text-xs text-slate-500">El sistema propone el mensaje y vos tocás “Enviar”. Más control.</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer
+                      {% if config.modo_envio == 'automatico' %}border-blue-500 bg-blue-50{% else %}border-slate-300{% endif %}">
+          <input type="radio" name="modo_envio" value="automatico" class="mt-1"
+                 {% if config.modo_envio == 'automatico' %}checked{% endif %}>
+          <span>
+            <span class="font-medium text-slate-800">Automático</span>
+            <span class="block text-xs text-slate-500">El sistema manda solo los recordatorios al subir la foto o al tocar “Ejecutar cobranza de hoy”. No tocás botón por cliente.</span>
+          </span>
+        </label>
+      </div>
+    </div>
+
+    <div>
       <label for="valor_dolar" class="block font-semibold text-slate-800">Valor del dólar (en pesos)</label>
       <p class="text-xs text-slate-500 mb-2">
         Lo usamos para mostrarte los precios de los planes en pesos. Poné el dólar de hoy.
