@@ -38,7 +38,10 @@ def crear_tablas() -> None:
     from cobranzas import modelos  # noqa: F401
 
     Base.metadata.create_all(engine)
-    _asegurar_columnas_nuevas()
+    # La mini-migración usa PRAGMA, que es solo de SQLite. En PostgreSQL (la nube)
+    # create_all ya crea el esquema completo, así que no hace falta.
+    if engine.dialect.name == "sqlite":
+        _asegurar_columnas_nuevas()
 
 
 def _asegurar_columnas_nuevas() -> None:

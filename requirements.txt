@@ -7,6 +7,7 @@ jinja2==3.1.4             # plantillas HTML
 python-multipart==0.0.20  # necesario para recibir archivos subidos (el Excel)
 
 sqlalchemy==2.0.36        # base de datos detrás de una capa (sqlite hoy, postgres mañana)
+psycopg2-binary==2.9.10   # conector de PostgreSQL (solo se usa en la nube)
 
 pandas==2.2.3             # leer el Excel (el corazón del producto)
 openpyxl==3.1.5           # motor que usa pandas para archivos .xlsx

@@ -1,0 +1,24 @@
+# Configuración para desplegar COBRUM en Render (https://render.com) — plan GRATIS.
+# Render lee este archivo solo: crea la base PostgreSQL y el servidor web, y los conecta.
+# (Más adelante, al salir en serio, se cambia 'plan: free' por uno pago para que no se duerma.)
+
+databases:
+  - name: cobrum-db
+    plan: free
+
+services:
+  - type: web
+    name: cobrum
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn web.app:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      # La dirección de la base de datos se enchufa sola desde la base de arriba.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cobrum-db
+          property: connectionString
+      # Versión de Python.
+      - key: PYTHON_VERSION
+        value: "3.11.9"
