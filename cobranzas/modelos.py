@@ -124,6 +124,10 @@ class Configuracion(Base):
     # En qué plan está la empresa (clave del plan: 'arranque' | 'crecimiento' | 'pro').
     plan_actual: Mapped[str] = mapped_column(String, default="arranque")
 
+    # Nombre con el que salen los mensajes de WhatsApp (lo que ve el cliente). La
+    # identidad del envío es del negocio/vendedor, nunca de la plataforma.
+    nombre_negocio: Mapped[str] = mapped_column(String, default="Distribuidora del Oeste")
+
     # Asientos extra contratados con el add-on "vendedor adicional".
     vendedores_adicionales: Mapped[int] = mapped_column(Integer, default=0)
 

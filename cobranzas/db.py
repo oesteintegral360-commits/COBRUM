@@ -52,6 +52,7 @@ def _asegurar_columnas_nuevas() -> None:
     # columnas esperadas que pudieron agregarse después: tabla -> {columna: tipo SQL}
     nuevas = {
         "import_snapshots": {"dso_aprox": "INTEGER DEFAULT 0"},
+        "configuracion": {"nombre_negocio": "VARCHAR DEFAULT 'Distribuidora del Oeste'"},
     }
     with engine.begin() as conexion:
         for tabla, columnas in nuevas.items():
