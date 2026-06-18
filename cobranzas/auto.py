@@ -14,7 +14,7 @@ las últimas horas, para no bombardearlo si se corre la cobranza varias veces.
 from datetime import datetime, timedelta
 
 from cobranzas.modelos import Cliente, Mensaje, Configuracion
-from cobranzas import motor, mensajeria
+from cobranzas import motor, mensajeria, respuestas
 
 # No le volvemos a escribir a un cliente si ya le mandamos algo hace menos de estas horas.
 HORAS_ANTI_SPAM = 20
@@ -27,11 +27,17 @@ def ejecutar_cobranza(sesion, hoy) -> dict:
     """
     config = Configuracion.obtener(sesion)
     ahora = datetime.now()
-    resumen = {"enviados": 0, "plantillas": 0, "gratis": 0, "salteados": 0}
+    resumen = {"enviados": 0, "plantillas": 0, "gratis": 0, "salteados": 0, "pausados": 0}
 
     for cliente in sesion.query(Cliente).all():
         vencidas = [f for f in cliente.facturas if motor.esta_vencida(f, hoy)]
         if not vencidas:
+            continue
+
+        # Respeta la Fase 4: no le mandamos a quien dijo que pagó, tiene un reclamo
+        # abierto, o prometió pagar y está dentro del plazo.
+        if respuestas.cobranza_pausada(cliente, hoy):
+            resumen["pausados"] += 1
             continue
 
         # Freno anti-spam: ¿ya le escribimos hace poco?

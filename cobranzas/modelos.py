@@ -45,6 +45,15 @@ class Cliente(Base):
     # entrar igual pero marcado para revisar (no bloquea la carga).
     cuit_sospechoso: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Estado de gestión (Fase 4 — qué pasó con la cobranza de este cliente):
+    #   'activo'         -> se le cobra normal.
+    #   'pago_informado' -> tocó "Ya pagué"; pausa, a verificar contra el extracto (Fase 5).
+    #   'promesa_pago'   -> tocó "Pido unos días"; pausa hasta 'gestion_hasta'.
+    #   'reclamo'        -> tocó "Tengo un reclamo"; pausa, necesita atención humana.
+    estado_gestion: Mapped[str] = mapped_column(String, default="activo")
+    # Hasta cuándo está pausada la cobranza por una promesa de pago.
+    gestion_hasta: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
     facturas: Mapped[list["Factura"]] = relationship(
         back_populates="cliente", cascade="all, delete-orphan"
     )
