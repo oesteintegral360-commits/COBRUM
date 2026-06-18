@@ -69,7 +69,29 @@ Estos puntos salieron de la investigación de mercado (HighRadius, Upflow, Chase
 
 6. **Lo que no cambia.** La confirmación de pago es **comprobante + cruce contra el extracto bancario**. NO agregar links de pago automáticos todavía (queda para más adelante).
 
-> La estructura de **Precios** (planes y límites) se documenta en su propia sección cuando se construya esa tanda.
+## Precios (decisiones permanentes)
+
+**Principio que manda:** los precios se definen en **USD** y se cobran en **pesos** al valor del
+dólar del día. **NUNCA se guardan pesos fijos** (con la inflación se desactualizan solos): el
+peso se calcula al vuelo = `precio_usd * valor_dolar` configurable. El modelo es **suscripción
+mensual + cobro por vendedor (asiento)**.
+
+**Los 3 planes** (la fuente de verdad en código es `cobranzas/planes.py`):
+- **Arranque — USD 79/mes.** Hasta 3 vendedores · hasta 150 clientes activos · 1 admin.
+- **Crecimiento — USD 149/mes.** Marcado como **"El más elegido"**. Hasta 8 vendedores · hasta
+  600 clientes activos · admins múltiples.
+- **Pro — desde USD 299/mes.** Vendedores y clientes ilimitados (uso razonable).
+- **Add-on** (Arranque y Crecimiento): vendedor adicional **USD 19/mes** c/u. En Pro no aplica.
+- **Anual:** 2 meses gratis al pagar el año completo.
+
+**La app respeta los límites** (vendedores y clientes activos): si se superan, **avisa y sugiere**
+sumar el add-on o subir de plan — **nunca bloquea** el acceso a los datos.
+
+**Costo/margen:** referencia interna en `pricing-notes.md` (NO se muestra al cliente).
+
+> El **login / cuentas / multi-empresa** y el **cobro real** (Mercado Pago u otro) son parte del
+> hito "ponerlo online como SaaS" (mudanza a la nube), no de esta tanda. La base ya está
+> preparada para esa mudanza (ver Stack: `DATABASE_URL`).
 
 ## Stack y decisiones técnicas
 - **Python** (hoy probado en 3.9; funciona en versiones más nuevas también).
