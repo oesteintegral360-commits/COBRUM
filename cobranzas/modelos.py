@@ -141,6 +141,29 @@ class Cobro(Base):
     estado: Mapped[str] = mapped_column(String, default="a_rendir")
 
 
+class LinkPago(Base):
+    """
+    Un link de pago que se le manda al cliente para que salde la deuda de un toque
+    (Fase 5 — "pago de un toque"). SIMULADO por ahora.
+
+    La plata va a la cuenta de la EMPRESA (no de COBRUM): el día real, cada empresa
+    conecta su propio Mercado Pago y COBRUM solo arma el link y escucha cuándo se pagó.
+    """
+
+    __tablename__ = "links_pago"
+
+    # Token random que va en la URL (/pagar/{token}).
+    token: Mapped[str] = mapped_column(String, primary_key=True)
+    cuit: Mapped[str] = mapped_column(ForeignKey("clientes.cuit"))
+    monto: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+
+    # 'pendiente' o 'pagado'.
+    estado: Mapped[str] = mapped_column(String, default="pendiente")
+
+    fecha_hora: Mapped[datetime] = mapped_column(DateTime)
+    fecha_pago: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class Configuracion(Base):
     """
     Configuración de la empresa (una sola fila, se crea sola la primera vez).

@@ -14,7 +14,7 @@ las últimas horas, para no bombardearlo si se corre la cobranza varias veces.
 from datetime import datetime, timedelta
 
 from cobranzas.modelos import Cliente, Mensaje, Configuracion
-from cobranzas import motor, mensajeria, respuestas
+from cobranzas import motor, mensajeria, respuestas, pagos
 
 # No le volvemos a escribir a un cliente si ya le mandamos algo hace menos de estas horas.
 HORAS_ANTI_SPAM = 20
@@ -58,6 +58,9 @@ def ejecutar_cobranza(sesion, hoy) -> dict:
         texto = mensajeria.redactar_recordatorio(
             cliente.nombre or "cliente", config.nombre_negocio, cliente.vendedor_asignado,
             factura_ref, total_vencido, max_dias, etapa)
+        # Sumamos el link de pago "de un toque" (a nombre de la empresa).
+        texto = pagos.agregar_link_al_mensaje(
+            sesion, cliente, total_vencido, texto, config.nombre_negocio)
 
         sesion.add(Mensaje(cuit=cliente.cuit, direccion="saliente", tipo=tipo,
                            etapa=etapa, fecha_hora=ahora, texto=texto))

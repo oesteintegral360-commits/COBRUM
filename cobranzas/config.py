@@ -19,3 +19,9 @@ CARPETA_DATOS = RAIZ / "datos"
 #   - Mañana (nube): postgresql://usuario:clave@servidor/cobranzas
 # Para cambiar de motor, se cambia SOLO esta variable.
 DATABASE_URL = f"sqlite:///{CARPETA_DATOS / 'cobranzas.db'}"
+
+# Dirección base con la que se arman los links de pago que se mandan al cliente.
+#   - Hoy (local):  http://localhost:8011
+#   - Mañana (nube): https://tudistribuidora.com
+# Para cambiar el dominio, se cambia SOLO esta variable.
+BASE_URL = "http://localhost:8011"
