@@ -101,6 +101,18 @@ filas_2 = [
 df2 = pd.DataFrame(filas_2, columns=columnas)
 df2.to_excel(CARPETA / "foto_2.xlsx", index=False)
 
+# --- EXTRACTO BANCARIO de ejemplo ----------------------------------------------
+# Para probar la conciliación (Fase 5): tiene un ingreso que coincide con el saldo
+# vencido del Kiosco (8.500,50), así una transferencia registrada se concilia sola.
+filas_extracto = [
+    [HOY - timedelta(days=2), "Transferencia recibida", 8500.50],
+    [HOY - timedelta(days=1), "Pago proveedor", -12000.00],   # débito (no es ingreso)
+    [HOY, "Acreditación", 20000.00],
+]
+df_ext = pd.DataFrame(filas_extracto, columns=["Fecha", "Descripción", "Monto"])
+df_ext.to_excel(CARPETA / "extracto_ejemplo.xlsx", index=False)
+
 print("Listo. Generados:")
 print(" -", CARPETA / "foto_1.xlsx")
 print(" -", CARPETA / "foto_2.xlsx")
+print(" -", CARPETA / "extracto_ejemplo.xlsx")
