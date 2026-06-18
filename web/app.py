@@ -91,6 +91,34 @@ def lista_clientes(request: Request):
             # Solo listamos clientes que tengan algo pendiente.
             if total <= 0:
                 continue
+
+            # Datos para la agenda priorizada (Fase 2).
+            vencidas = [f for f in facturas if motor.esta_vencida(f, hoy)]
+            total_vencido = sum((float(f.saldo_pendiente) for f in vencidas), 0.0)
+            max_dias = max((motor.dias_atraso(f, hoy) for f in vencidas), default=0)
+            puntaje = motor.puntaje_cobrabilidad(facturas, hoy)
+            tiene_vencidas = len(vencidas) > 0
+
+            # Prioridad por color, según hace cuánto está la más vencida.
+            if max_dias > 60:
+                prioridad = "alta"
+            elif max_dias > 30:
+                prioridad = "media"
+            elif max_dias >= 1:
+                prioridad = "baja"
+            else:
+                prioridad = None
+
+            # Razón en una línea (texto humano).
+            if tiene_vencidas:
+                razon = (f"Debe ${total_vencido:,.0f} vencidos · la más vieja hace "
+                         f"{max_dias} días").replace(",", ".")
+            else:
+                proxima = min((f.fecha_vencimiento for f in facturas
+                               if f.estado == "pendiente"), default=None)
+                razon = ("Todavía no venció" + (f" · vence {proxima.strftime('%d/%m')}"
+                         if proxima else ""))
+
             tarjetas.append({
                 "cuit": c.cuit,
                 "nombre": c.nombre or "(sin nombre)",
@@ -98,20 +126,33 @@ def lista_clientes(request: Request):
                 "falta_telefono": c.falta_telefono,
                 "cuit_sospechoso": c.cuit_sospechoso,
                 "total": float(total),
+                "total_vencido": total_vencido,
+                "max_dias": max_dias,
+                "puntaje": puntaje,
+                "tiene_vencidas": tiene_vencidas,
+                "prioridad": prioridad,
+                "razon": razon,
                 "facturas": facturas_info,
             })
 
-        # Ordenamos los clientes por deuda total (de mayor a menor).
-        tarjetas.sort(key=lambda t: t["total"], reverse=True)
+        # Agenda = los que tienen vencidas, ordenados por puntaje (lo más cobrable hoy).
+        agenda = sorted([t for t in tarjetas if t["tiene_vencidas"]],
+                        key=lambda t: t["puntaje"], reverse=True)
+        # Próximos = con deuda pero sin vencidas todavía, ordenados por su vencimiento.
+        proximos = sorted([t for t in tarjetas if not t["tiene_vencidas"]],
+                          key=lambda t: t["max_dias"], reverse=True)
 
-        snap = sesion.query(ImportSnapshot).order_by(ImportSnapshot.id.desc()).first()
-        # Lo pasamos como datos planos para que la plantilla no dependa de la sesión.
+        # --- Días de cobranza (DSO aprox) + tendencia vs la foto anterior ---
+        ultimos = (sesion.query(ImportSnapshot)
+                   .order_by(ImportSnapshot.id.desc()).limit(2).all())
+        dso_actual = ultimos[0].dso_aprox if ultimos else 0
+        dso_previo = ultimos[1].dso_aprox if len(ultimos) > 1 else None
         snapshot = None
-        if snap is not None:
+        if ultimos:
             snapshot = {
-                "nombre_archivo": snap.nombre_archivo,
-                "cantidad_facturas": snap.cantidad_facturas,
-                "total_pendiente": float(snap.total_pendiente),
+                "nombre_archivo": ultimos[0].nombre_archivo,
+                "cantidad_facturas": ultimos[0].cantidad_facturas,
+                "total_pendiente": float(ultimos[0].total_pendiente),
             }
 
         # --- Aviso de límite del plan (avisar y sugerir, nunca bloquear) ---
@@ -128,9 +169,13 @@ def lista_clientes(request: Request):
 
     return plantillas.TemplateResponse("lista.html", {
         "request": request,
-        "tarjetas": tarjetas,
+        "agenda": agenda,
+        "proximos": proximos,
+        "tiene_algo": bool(agenda or proximos),
         "resultado": _ultimo_resultado["datos"],
         "snapshot": snapshot,
+        "dso_actual": dso_actual,
+        "dso_previo": dso_previo,
         "hoy": hoy,
         "avisos_limite": avisos_limite,
         "plan_actual": plan,
