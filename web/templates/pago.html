@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pagar</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg overflow-hidden">
+
+    {% if not p %}
+      <div class="p-8 text-center">
+        <div class="text-5xl mb-3">🔗</div>
+        <p class="text-slate-700 font-semibold">Este link de pago no es válido o venció.</p>
+      </div>
+
+    {% elif p.pagado %}
+      <div class="p-8 text-center">
+        <div class="text-6xl mb-3">✅</div>
+        <h1 class="text-xl font-bold text-slate-900">¡Pago realizado!</h1>
+        <p class="text-slate-500 mt-1">Ya le avisamos a {{ p.negocio }}. ¡Gracias!</p>
+        <div class="mt-4 text-3xl font-extrabold text-slate-900">${{ "{:,.0f}".format(p.monto).replace(",", ".") }}</div>
+      </div>
+
+    {% else %}
+      <div class="bg-slate-900 text-white px-6 py-4">
+        <div class="text-xs text-slate-300">Pagás a</div>
+        <div class="text-lg font-bold">{{ p.negocio }}</div>
+      </div>
+      <div class="p-6 text-center">
+        <div class="text-sm text-slate-500">{{ p.cliente }}</div>
+        <div class="text-xs text-slate-400 mt-4">Total a pagar</div>
+        <div class="text-4xl font-extrabold text-slate-900">${{ "{:,.0f}".format(p.monto).replace(",", ".") }}</div>
+
+        <form action="/pagar/{{ p.token }}/confirmar" method="post" class="mt-6">
+          <button type="submit"
+                  class="w-full rounded-xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white hover:bg-blue-700 transition">
+            Pagar ahora
+          </button>
+        </form>
+        <p class="text-[11px] text-slate-400 mt-4">Pago procesado por Mercado Pago · simulado</p>
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>

@@ -25,7 +25,8 @@ from cobranzas import mensajeria
 from cobranzas import auto
 from cobranzas import respuestas
 from cobranzas import cobros as cobros_mod
-from cobranzas.modelos import Cobro
+from cobranzas import pagos as pagos_mod
+from cobranzas.modelos import Cobro, LinkPago
 
 AQUI = Path(__file__).resolve().parent
 SUBIDOS = AQUI / "subidos"
@@ -34,6 +35,23 @@ SUBIDOS.mkdir(exist_ok=True)
 app = FastAPI(title="COBRUM")
 app.mount("/static", StaticFiles(directory=AQUI / "static"), name="static")
 plantillas = Jinja2Templates(directory=AQUI / "templates")
+
+
+def _linkificar(texto):
+    """Convierte las URLs de un texto en links clickeables (para los mensajes)."""
+    import re
+    from markupsafe import Markup, escape
+    partes = re.split(r"(https?://\S+)", texto or "")
+    salida = ""
+    for i, parte in enumerate(partes):
+        if i % 2 == 1:  # las posiciones impares son las URLs
+            salida += f'<a href="{escape(parte)}" class="text-blue-600 underline" target="_blank">{escape(parte)}</a>'
+        else:
+            salida += str(escape(parte))
+    return Markup(salida)
+
+
+plantillas.env.filters["linkificar"] = _linkificar
 
 # Creamos las tablas al arrancar (si no existen).
 crear_tablas()
@@ -420,13 +438,18 @@ def enviar_recordatorio(cuit: str):
     try:
         datos = _datos_cliente(sesion, cuit, hoy)
         if datos and datos["tiene_vencidas"]:
+            cliente = sesion.get(Cliente, cuit)
+            config = Configuracion.obtener(sesion)
+            # Sumamos el link de pago "de un toque" al mensaje.
+            texto = pagos_mod.agregar_link_al_mensaje(
+                sesion, cliente, datos["total_vencido"], datos["propuesta"], config.nombre_negocio)
             sesion.add(Mensaje(
                 cuit=cuit,
                 direccion="saliente",
                 tipo=datos["tipo_proximo"],   # 'plantilla' (con costo) o 'respuesta_ventana' (gratis)
                 etapa=datos["etapa"],
                 fecha_hora=datetime.now(),
-                texto=datos["propuesta"],
+                texto=texto,
             ))
             sesion.commit()
     finally:
@@ -568,3 +591,39 @@ async def conciliar_extracto(archivo: UploadFile = File(...)):
 
     _ultima_conciliacion["datos"] = resultado
     return RedirectResponse(url="/cobros", status_code=303)
+
+
+# --- Pago "de un toque" del cliente (Fase 5) — SIMULADO -----------------------
+
+@app.get("/pagar/{token}", response_class=HTMLResponse)
+def pagina_pago(request: Request, token: str):
+    """Pantalla que ve el cliente al abrir el link (pago a nombre de la empresa)."""
+    sesion = Sesion()
+    try:
+        link = sesion.get(LinkPago, token)
+        if link is None:
+            datos = None
+        else:
+            cliente = sesion.get(Cliente, link.cuit)
+            config = Configuracion.obtener(sesion)
+            datos = {
+                "token": link.token,
+                "negocio": config.nombre_negocio,
+                "cliente": cliente.nombre if cliente else "",
+                "monto": float(link.monto),
+                "pagado": link.estado == "pagado",
+            }
+    finally:
+        sesion.close()
+    return plantillas.TemplateResponse("pago.html", {"request": request, "p": datos})
+
+
+@app.post("/pagar/{token}/confirmar")
+def confirmar_pago(token: str):
+    """Simula que el cliente pagó: salda la deuda y registra el cobro acreditado."""
+    sesion = Sesion()
+    try:
+        pagos_mod.registrar_pago_link(sesion, token)
+    finally:
+        sesion.close()
+    return RedirectResponse(url=f"/pagar/{token}", status_code=303)

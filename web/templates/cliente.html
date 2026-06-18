@@ -71,6 +71,7 @@
     </span>
   </div>
   <p class="text-slate-800 bg-white rounded-xl p-3 border border-blue-100 leading-relaxed">{{ c.propuesta }}</p>
+  <p class="text-xs text-blue-700 mt-2">💳 Al enviar, se le agrega tu link de pago para que salde de un toque.</p>
 
   <form action="/cliente/{{ c.cuit }}/enviar" method="post" class="mt-4">
     <button type="submit"
@@ -133,7 +134,7 @@
       <div class="flex {% if m.direccion == 'saliente' %}justify-end{% else %}justify-start{% endif %}">
         <div class="max-w-[80%] rounded-2xl px-4 py-2
                     {% if m.direccion == 'saliente' %}bg-green-100 text-slate-800{% else %}bg-white border border-slate-200 text-slate-700{% endif %}">
-          <p class="text-sm leading-relaxed">{{ m.texto }}</p>
+          <p class="text-sm leading-relaxed whitespace-pre-line">{{ m.texto|linkificar }}</p>
           <div class="text-[11px] text-slate-400 mt-1 flex gap-2 {% if m.direccion == 'saliente' %}justify-end{% endif %}">
             {% if m.fecha_hora %}<span>{{ m.fecha_hora.strftime("%d/%m %H:%M") }}</span>{% endif %}
             {% if m.direccion == 'saliente' %}
