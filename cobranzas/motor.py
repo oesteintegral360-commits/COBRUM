@@ -52,12 +52,47 @@ def total_por_cliente(facturas: list[Factura]) -> Decimal:
     )
 
 
-def puntaje_cobrabilidad(cliente, facturas: list[Factura], hoy: date) -> float:
+def puntaje_cobrabilidad(facturas: list[Factura], hoy: date) -> float:
     """
-    SEAM Fase 2 — "worklist prioritization" (a quién conviene perseguir hoy primero).
+    Puntaje "a quién cobrar primero" (worklist, estilo HighRadius/Upflow).
 
-    La idea (estilo HighRadius/Upflow) es priorizar por lo más cobrable: combinar monto,
-    días de atraso, historial de pago y si hay una ventana de WhatsApp abierta. En la
-    Fase 1 todavía no se calcula; queda esbozada para que la Fase 2 la complete.
+    Es BALANCEADO: combina cuánto debe vencido (impacto) con hace cuánto está vencido
+    (urgencia). Más alto = más prioridad. Devuelve 0 si el cliente no tiene nada vencido
+    (no entra en la agenda de hoy).
     """
-    return 0.0
+    total_vencido = Decimal("0")
+    max_dias = 0
+    for f in facturas:
+        if esta_vencida(f, hoy):
+            total_vencido += Decimal(str(f.saldo_pendiente))
+            max_dias = max(max_dias, dias_atraso(f, hoy))
+
+    if total_vencido <= 0:
+        return 0.0
+
+    # Urgencia: de 1.0 (recién vencida) a 2.0 (90+ días). Cap a 90 para que un monto
+    # enorme pero antiquísimo no distorsione el orden.
+    urgencia = 1 + min(max_dias, 90) / 90
+    return float(total_vencido) * urgencia
+
+
+def dias_cobranza_aprox(facturas: list[Factura], hoy: date) -> int:
+    """
+    Días de cobranza aproximado (proxy del DSO), calculado solo con la foto.
+
+    Es el promedio de días de atraso PONDERADO por monto, sobre lo pendiente: "tu plata,
+    en promedio, está vencida hace X días". 0 = todo al día. Sirve para ver la tendencia
+    foto a foto (el norte es que baje).
+    """
+    suma_saldo = Decimal("0")
+    suma_ponderada = Decimal("0")
+    for f in facturas:
+        if f.estado != "pendiente":
+            continue
+        saldo = Decimal(str(f.saldo_pendiente))
+        suma_saldo += saldo
+        suma_ponderada += saldo * dias_atraso(f, hoy)
+
+    if suma_saldo <= 0:
+        return 0
+    return round(float(suma_ponderada / suma_saldo))

@@ -98,6 +98,10 @@ class ImportSnapshot(Base):
     cantidad_facturas: Mapped[int] = mapped_column(Integer, default=0)
     total_pendiente: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
 
+    # Días de cobranza aproximado en el momento de esta foto (proxy del DSO). Guardarlo
+    # acá nos deja graficar la evolución sin recalcular nada a mano.
+    dso_aprox: Mapped[int] = mapped_column(Integer, default=0)
+
 
 class Configuracion(Base):
     """

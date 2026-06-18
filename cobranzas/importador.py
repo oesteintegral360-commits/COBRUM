@@ -12,7 +12,7 @@ Devuelve un ResultadoImport con números y avisos en lenguaje humano.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
@@ -20,6 +20,7 @@ import pandas as pd
 
 from cobranzas.cuit import normalizar_cuit, validar_digito_verificador
 from cobranzas.modelos import Cliente, Factura, ImportSnapshot
+from cobranzas import motor
 
 
 # --- Mapeo flexible de columnas -------------------------------------------------
@@ -225,12 +226,13 @@ def importar_foto(sesion, ruta_excel: str, nombre_archivo: Optional[str] = None)
     pendientes = sesion.query(Factura).filter_by(estado="pendiente").all()
     resultado.total_pendiente = sum((Decimal(str(f.saldo_pendiente)) for f in pendientes), Decimal("0"))
 
-    # 6) Registrar el snapshot de esta carga.
+    # 6) Registrar el snapshot de esta carga (incluye el DSO aproximado de la foto).
     snap = ImportSnapshot(
         fecha_hora=datetime.now(),
         nombre_archivo=nombre_archivo,
         cantidad_facturas=len(pendientes),
         total_pendiente=resultado.total_pendiente,
+        dso_aprox=motor.dias_cobranza_aprox(pendientes, date.today()),
     )
     sesion.add(snap)
 

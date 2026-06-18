@@ -38,3 +38,24 @@ def crear_tablas() -> None:
     from cobranzas import modelos  # noqa: F401
 
     Base.metadata.create_all(engine)
+    _asegurar_columnas_nuevas()
+
+
+def _asegurar_columnas_nuevas() -> None:
+    """
+    Mini-migración para bases que ya existían: agrega columnas nuevas si faltan.
+    (create_all crea tablas nuevas, pero NO agrega columnas a tablas viejas.)
+    El día que pasemos a PostgreSQL esto se reemplaza por migraciones de verdad.
+    """
+    from sqlalchemy import text
+
+    # columnas esperadas que pudieron agregarse después: tabla -> {columna: tipo SQL}
+    nuevas = {
+        "import_snapshots": {"dso_aprox": "INTEGER DEFAULT 0"},
+    }
+    with engine.begin() as conexion:
+        for tabla, columnas in nuevas.items():
+            existentes = {fila[1] for fila in conexion.execute(text(f"PRAGMA table_info({tabla})"))}
+            for columna, tipo in columnas.items():
+                if columna not in existentes:
+                    conexion.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo}"))
