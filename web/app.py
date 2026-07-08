@@ -106,12 +106,18 @@ def lista_clientes(request: Request):
         todos_vendedores = sorted({(c.vendedor_asignado or "").strip()
                                    for c in clientes if (c.vendedor_asignado or "").strip()})
         vendedor_sel = unquote(request.cookies.get("vendedor", ""))
+        # Texto de búsqueda (por nombre o CUIT).
+        busqueda = (request.query_params.get("q") or "").strip()
+        q = busqueda.lower()
 
         # Armamos una estructura simple y ya calculada para la plantilla.
         tarjetas = []
         for c in clientes:
             # Si hay un vendedor elegido, mostramos solo SUS clientes.
             if vendedor_sel and (c.vendedor_asignado or "").strip() != vendedor_sel:
+                continue
+            # Si hay búsqueda, filtramos por nombre o CUIT.
+            if q and q not in (c.nombre or "").lower() and q not in c.cuit:
                 continue
             facturas = list(c.facturas)
             facturas_info = []
@@ -257,6 +263,7 @@ def lista_clientes(request: Request):
         "todos_vendedores": todos_vendedores,
         "vendedor_sel": vendedor_sel,
         "volver": "/clientes",
+        "busqueda": busqueda,
     })
 
 
@@ -511,6 +518,21 @@ def registrar_cobro_cliente(cuit: str, metodo: str = Form(...), monto: float = F
         cliente = sesion.get(Cliente, cuit)
         if cliente is not None and metodo in ("efectivo", "transferencia") and monto > 0:
             cobros_mod.registrar_cobro(sesion, cliente, monto, metodo)
+    finally:
+        sesion.close()
+    return RedirectResponse(url=f"/cliente/{cuit}", status_code=303)
+
+
+@app.post("/cliente/{cuit}/datos")
+def guardar_datos_cliente(cuit: str, telefono: str = Form(""), vendedor: str = Form("")):
+    """Completa/edita el teléfono y el vendedor de un cliente (sin depender del Excel)."""
+    sesion = Sesion()
+    try:
+        cliente = sesion.get(Cliente, cuit)
+        if cliente is not None:
+            cliente.telefono_whatsapp = telefono.strip() or None
+            cliente.vendedor_asignado = vendedor.strip() or None
+            sesion.commit()
     finally:
         sesion.close()
     return RedirectResponse(url=f"/cliente/{cuit}", status_code=303)

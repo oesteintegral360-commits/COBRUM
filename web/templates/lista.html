@@ -131,6 +131,16 @@
 {# --- Selector de vendedor (vendedor en el centro) --- #}
 {% include "_filtro_vendedor.html" %}
 
+{# --- Buscador de clientes --- #}
+<form action="/clientes" method="get" class="mb-6">
+  <div class="flex gap-2">
+    <input type="search" name="q" value="{{ busqueda }}" placeholder="Buscar cliente por nombre o CUIT…"
+           class="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 focus:border-blue-500 focus:outline-none">
+    <button type="submit" class="rounded-xl bg-slate-800 text-white px-5 py-2.5 font-medium hover:bg-slate-900">Buscar</button>
+    {% if busqueda %}<a href="/clientes" class="rounded-xl bg-slate-100 text-slate-600 px-4 py-2.5 flex items-center hover:bg-slate-200">Limpiar</a>{% endif %}
+  </div>
+</form>
+
 {# --- Indicador de Días de cobranza (DSO aprox) + total --- #}
 {% if tiene_algo %}
 <div class="grid sm:grid-cols-3 gap-4 mb-8">
