@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 from cobranzas.db import Sesion, crear_tablas
-from cobranzas.modelos import Cliente, ImportSnapshot, Configuracion, Mensaje
+from cobranzas.modelos import Cliente, Factura, ImportSnapshot, Configuracion, Mensaje
 from cobranzas.importador import importar_foto
 from cobranzas import motor
 from cobranzas import planes as planes_mod
@@ -67,8 +67,70 @@ _ultima_conciliacion = {"datos": None}
 
 @app.get("/", response_class=HTMLResponse)
 def inicio(request: Request):
-    """Pantalla de inicio: el botón grande para subir la foto."""
-    return plantillas.TemplateResponse("inicio.html", {"request": request})
+    """
+    Panel de inicio (dashboard). Si todavía no hay datos, muestra la pantalla para subir
+    la primera foto. Diseñado según los 4 principios: pocos KPIs claros (menos es más),
+    lo importante arriba (jerarquía), tendencias en el tiempo (contexto) y color con
+    intención.
+    """
+    hoy = date.today()
+    inicio_mes = datetime(hoy.year, hoy.month, 1)
+    sesion = Sesion()
+    try:
+        # KPI: total a cobrar (suma de lo pendiente, ahora).
+        pendientes = sesion.query(Factura).filter_by(estado="pendiente").all()
+        total_a_cobrar = sum(float(f.saldo_pendiente) for f in pendientes)
+
+        # Contexto: evolución del DSO y del total a cobrar, foto a foto.
+        snaps = sesion.query(ImportSnapshot).order_by(ImportSnapshot.id.asc()).all()
+        etiquetas = [s.fecha_hora.strftime("%d/%m") for s in snaps]
+        dso_serie = [s.dso_aprox for s in snaps]
+        total_serie = [float(s.total_pendiente) for s in snaps]
+        dso_actual = snaps[-1].dso_aprox if snaps else 0
+        dso_previo = snaps[-2].dso_aprox if len(snaps) > 1 else None
+
+        # KPI: cobrado este mes, y desglose por método (color con intención).
+        cobros_mes = sesion.query(Cobro).filter(Cobro.fecha_hora >= inicio_mes).all()
+        cobrado_mes = sum(float(c.monto) for c in cobros_mes)
+        etiqueta_metodo = {"efectivo": "Efectivo", "transferencia": "Transferencia", "link": "Link de pago"}
+        color_metodo = {"efectivo": "#16a34a", "transferencia": "#2563eb", "link": "#7c3aed"}
+        por_metodo = {}
+        for c in cobros_mes:
+            por_metodo[c.metodo] = por_metodo.get(c.metodo, 0.0) + float(c.monto)
+        metodo = {
+            "labels": [etiqueta_metodo.get(m, m) for m in por_metodo],
+            "data": [round(v) for v in por_metodo.values()],
+            "colors": [color_metodo.get(m, "#64748b") for m in por_metodo],
+        }
+
+        # KPI: plata en la calle (efectivo cobrado sin rendir).
+        plata_en_calle = sum(float(c.monto) for c in sesion.query(Cobro)
+                             .filter(Cobro.metodo == "efectivo", Cobro.estado == "a_rendir").all())
+
+        # KPI: clientes que necesitan atención (reclamos).
+        necesitan_atencion = (sesion.query(Cliente)
+                              .filter(Cliente.estado_gestion == "reclamo").count())
+
+        hay_datos = bool(snaps or cobros_mes or total_a_cobrar > 0)
+    finally:
+        sesion.close()
+
+    if not hay_datos:
+        return plantillas.TemplateResponse("inicio.html", {"request": request})
+
+    return plantillas.TemplateResponse("dashboard.html", {
+        "request": request,
+        "total_a_cobrar": total_a_cobrar,
+        "dso_actual": dso_actual,
+        "dso_previo": dso_previo,
+        "cobrado_mes": cobrado_mes,
+        "plata_en_calle": plata_en_calle,
+        "necesitan_atencion": necesitan_atencion,
+        "etiquetas": etiquetas,
+        "dso_serie": dso_serie,
+        "total_serie": total_serie,
+        "metodo": metodo,
+    })
 
 
 @app.post("/subir")

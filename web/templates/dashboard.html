@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block titulo %}COBRUM — Inicio{% endblock %}
+
+{% block contenido %}
+
+{# --- Encabezado + acción principal --- #}
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Tu cobranza de un vistazo</h1>
+    <p class="text-sm text-slate-500">Los números que importan, y cómo vienen cambiando.</p>
+  </div>
+  <a href="/clientes" class="text-sm rounded-lg bg-blue-600 text-white px-4 py-2.5 font-semibold hover:bg-blue-700">Ver la agenda de hoy →</a>
+</div>
+
+{# --- Aviso: necesitan atención (color con intención: rojo) --- #}
+{% if necesitan_atencion %}
+  <a href="/clientes" class="block rounded-xl bg-red-50 border border-red-200 text-red-800 px-4 py-3 mb-6 hover:bg-red-100">
+    ⚠️ <strong>{{ necesitan_atencion }}</strong> cliente(s) necesitan tu atención (reclamos). Tocá para verlos.
+  </a>
+{% endif %}
+
+{# --- KPIs principales (menos es más: pocos, aislados y claros) --- #}
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-xs text-slate-500 uppercase tracking-wide">Total a cobrar</div>
+    <div class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">${{ "{:,.0f}".format(total_a_cobrar).replace(",", ".") }}</div>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-xs text-slate-500 uppercase tracking-wide">Días de cobranza</div>
+    <div class="flex items-baseline gap-2 mt-1">
+      <span class="text-2xl sm:text-3xl font-extrabold text-blue-700">{{ dso_actual }}</span>
+      <span class="text-sm text-slate-400">días</span>
+    </div>
+    {% if dso_previo is not none %}
+      {% set dif = dso_actual - dso_previo %}
+      {% if dif < 0 %}<span class="text-xs font-semibold text-green-600">↓ {{ -dif }} (mejoró)</span>
+      {% elif dif > 0 %}<span class="text-xs font-semibold text-red-600">↑ {{ dif }} (empeoró)</span>
+      {% else %}<span class="text-xs font-semibold text-slate-400">= igual</span>{% endif %}
+    {% endif %}
+  </div>
+
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-xs text-slate-500 uppercase tracking-wide">Cobrado este mes</div>
+    <div class="text-2xl sm:text-3xl font-extrabold text-green-600 mt-1">${{ "{:,.0f}".format(cobrado_mes).replace(",", ".") }}</div>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <div class="text-xs text-slate-500 uppercase tracking-wide">Plata en la calle</div>
+    <div class="text-2xl sm:text-3xl font-extrabold text-amber-600 mt-1">${{ "{:,.0f}".format(plata_en_calle).replace(",", ".") }}</div>
+    <div class="text-xs text-slate-400">efectivo sin rendir</div>
+  </div>
+</div>
+
+{# --- Gráfico principal: tendencia del DSO (contexto: el norte es que baje) --- #}
+<div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mb-6">
+  <div class="flex items-center justify-between mb-1">
+    <h2 class="font-semibold text-slate-900">Días de cobranza en el tiempo</h2>
+    <span class="text-xs text-slate-400">foto a foto · el norte es que baje</span>
+  </div>
+  {% if etiquetas|length > 1 %}
+    <div class="h-64"><canvas id="graf_dso"></canvas></div>
+  {% else %}
+    <p class="text-sm text-slate-400 py-8 text-center">Subí más de una foto para ver la tendencia. 📈</p>
+  {% endif %}
+</div>
+
+{# --- Dos gráficos: deuda en el tiempo + cobrado por método (color con intención) --- #}
+<div class="grid md:grid-cols-2 gap-6">
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <h2 class="font-semibold text-slate-900 mb-1">Total a cobrar en el tiempo</h2>
+    {% if etiquetas|length > 1 %}
+      <div class="h-56"><canvas id="graf_total"></canvas></div>
+    {% else %}
+      <p class="text-sm text-slate-400 py-8 text-center">Todavía no hay historial suficiente.</p>
+    {% endif %}
+  </div>
+
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <h2 class="font-semibold text-slate-900 mb-1">Cobrado este mes, por método</h2>
+    {% if metodo.data %}
+      <div class="h-56"><canvas id="graf_metodo"></canvas></div>
+    {% else %}
+      <p class="text-sm text-slate-400 py-8 text-center">Todavía no registraste cobros este mes.</p>
+    {% endif %}
+  </div>
+</div>
+
+{# --- Subir foto nueva (acción recurrente) --- #}
+<div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mt-6">
+  <form action="/subir" method="post" enctype="multipart/form-data" class="flex flex-col sm:flex-row items-center gap-3">
+    <div class="flex-1">
+      <div class="font-semibold text-slate-800">Actualizá tu foto</div>
+      <div class="text-xs text-slate-400">Subí el Excel más reciente para refrescar los números.</div>
+    </div>
+    <input name="archivo" type="file" accept=".xlsx,.xls" required
+           class="text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-white">
+    <button type="submit" class="rounded-lg bg-blue-600 text-white px-5 py-2 font-semibold hover:bg-blue-700 whitespace-nowrap">Subir foto</button>
+  </form>
+</div>
+
+{# Datos para los gráficos #}
+<script id="datos-dashboard" type="application/json">
+{
+  "etiquetas": {{ etiquetas|tojson }},
+  "dso": {{ dso_serie|tojson }},
+  "total": {{ total_serie|tojson }},
+  "metodo": {{ metodo|tojson }}
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    var d = JSON.parse(document.getElementById("datos-dashboard").textContent);
+    var comun = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+
+    var elDso = document.getElementById("graf_dso");
+    if (elDso && d.etiquetas.length > 1) {
+      new Chart(elDso, {
+        type: "line",
+        data: { labels: d.etiquetas, datasets: [{ data: d.dso, borderColor: "#2563eb",
+          backgroundColor: "rgba(37,99,235,.08)", fill: true, tension: .35, pointRadius: 4 }] },
+        options: comun
+      });
+    }
+
+    var elTotal = document.getElementById("graf_total");
+    if (elTotal && d.etiquetas.length > 1) {
+      new Chart(elTotal, {
+        type: "line",
+        data: { labels: d.etiquetas, datasets: [{ data: d.total, borderColor: "#0f172a",
+          backgroundColor: "rgba(15,23,42,.06)", fill: true, tension: .35, pointRadius: 4 }] },
+        options: comun
+      });
+    }
+
+    var elMet = document.getElementById("graf_metodo");
+    if (elMet && d.metodo.data && d.metodo.data.length) {
+      new Chart(elMet, {
+        type: "doughnut",
+        data: { labels: d.metodo.labels, datasets: [{ data: d.metodo.data, backgroundColor: d.metodo.colors }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }
+      });
+    }
+  })();
+</script>
+
+{% endblock %}
