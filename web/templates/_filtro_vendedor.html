@@ -1,0 +1,18 @@
+{# Selector de vendedor (chips). Necesita: todos_vendedores, vendedor_sel, volver #}
+{% if todos_vendedores %}
+<div class="flex flex-wrap items-center gap-2 mb-6">
+  <span class="text-sm text-slate-400 mr-1">👤 Vendedor:</span>
+  <a href="/filtro/vendedor?volver={{ volver|urlencode }}"
+     class="text-sm px-3 py-1.5 rounded-full transition
+            {% if not vendedor_sel %}bg-blue-600 text-white{% else %}bg-white border border-slate-200 text-slate-600 hover:bg-slate-50{% endif %}">
+     Todos
+  </a>
+  {% for v in todos_vendedores %}
+    <a href="/filtro/vendedor?v={{ v|urlencode }}&volver={{ volver|urlencode }}"
+       class="text-sm px-3 py-1.5 rounded-full transition
+              {% if vendedor_sel == v %}bg-blue-600 text-white{% else %}bg-white border border-slate-200 text-slate-600 hover:bg-slate-50{% endif %}">
+       {{ v }}
+    </a>
+  {% endfor %}
+</div>
+{% endif %}

@@ -9,6 +9,7 @@ Es a propósito mínima y "acción-first": una sola acción importante por panta
 
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import quote, unquote
 import shutil
 
 from fastapi import FastAPI, Request, UploadFile, File, Form
@@ -101,9 +102,17 @@ def lista_clientes(request: Request):
     try:
         clientes = sesion.query(Cliente).all()
 
+        # Lista completa de vendedores (para el selector) y el que está elegido (cookie).
+        todos_vendedores = sorted({(c.vendedor_asignado or "").strip()
+                                   for c in clientes if (c.vendedor_asignado or "").strip()})
+        vendedor_sel = unquote(request.cookies.get("vendedor", ""))
+
         # Armamos una estructura simple y ya calculada para la plantilla.
         tarjetas = []
         for c in clientes:
+            # Si hay un vendedor elegido, mostramos solo SUS clientes.
+            if vendedor_sel and (c.vendedor_asignado or "").strip() != vendedor_sel:
+                continue
             facturas = list(c.facturas)
             facturas_info = []
             for f in facturas:
@@ -245,7 +254,21 @@ def lista_clientes(request: Request):
         "costo_pesos": costo_pesos,
         "modo_envio": config.modo_envio,
         "cobranza": cobranza_flash,
+        "todos_vendedores": todos_vendedores,
+        "vendedor_sel": vendedor_sel,
+        "volver": "/clientes",
     })
+
+
+@app.get("/filtro/vendedor")
+def filtro_vendedor(v: str = "", volver: str = "/clientes"):
+    """Guarda (en una cookie) qué vendedor se está viendo. v vacío = todos."""
+    resp = RedirectResponse(url=volver, status_code=303)
+    if v:
+        resp.set_cookie("vendedor", quote(v), max_age=31_536_000)  # 1 año
+    else:
+        resp.delete_cookie("vendedor")
+    return resp
 
 
 @app.post("/cobranza/ejecutar")
@@ -517,10 +540,19 @@ def pagina_cobros(request: Request):
     """Pantalla Caja: plata en la calle (a rendir) y transferencias a conciliar."""
     sesion = Sesion()
     try:
+        # Lista de vendedores (para el selector) y el elegido (cookie).
+        todos_vendedores = sorted({(x[0] or "").strip()
+                                   for x in sesion.query(Cliente.vendedor_asignado).all()
+                                   if (x[0] or "").strip()})
+        vendedor_sel = unquote(request.cookies.get("vendedor", ""))
+
+        def _es_del_vendedor(cobro):
+            return not vendedor_sel or (cobro.vendedor or "").strip() == vendedor_sel
+
         # Efectivo a rendir, agrupado por vendedor (la "plata en la calle").
-        a_rendir = (sesion.query(Cobro)
+        a_rendir = [c for c in sesion.query(Cobro)
                     .filter(Cobro.metodo == "efectivo", Cobro.estado == "a_rendir")
-                    .order_by(Cobro.fecha_hora.asc()).all())
+                    .order_by(Cobro.fecha_hora.asc()).all() if _es_del_vendedor(c)]
         por_vendedor = {}
         for c in a_rendir:
             vend = c.vendedor or "Sin vendedor"
@@ -535,9 +567,9 @@ def pagina_cobros(request: Request):
             })
 
         # Transferencias a conciliar contra el extracto.
-        a_conciliar = (sesion.query(Cobro)
+        a_conciliar = [c for c in sesion.query(Cobro)
                        .filter(Cobro.metodo == "transferencia", Cobro.estado == "a_conciliar")
-                       .order_by(Cobro.fecha_hora.asc()).all())
+                       .order_by(Cobro.fecha_hora.asc()).all() if _es_del_vendedor(c)]
         transferencias = []
         for c in a_conciliar:
             cliente = sesion.get(Cliente, c.cuit)
@@ -562,6 +594,9 @@ def pagina_cobros(request: Request):
         "total_a_rendir": total_a_rendir,
         "total_a_conciliar": total_a_conciliar,
         "conciliacion": conciliacion,
+        "todos_vendedores": todos_vendedores,
+        "vendedor_sel": vendedor_sel,
+        "volver": "/cobros",
     })
 
 
