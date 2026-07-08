@@ -11,23 +11,57 @@ Al registrar un cobro, el cliente deja de perseguirse (estado de gestión 'pagad
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 
-from cobranzas.modelos import Cobro, Cliente
+from cobranzas.modelos import Cobro, Cliente, ImportSnapshot
+from cobranzas import motor
 
 
 # Nombres de columna que aceptamos en el extracto del banco para el importe.
 COLUMNAS_MONTO = ["monto", "importe", "credito", "crédito", "haber", "ingreso", "deposito", "depósito"]
 
 
-def registrar_cobro(sesion, cliente: Cliente, monto, metodo: str) -> Cobro:
+def cobros_desde_ultima_foto(sesion, cuit: str) -> float:
     """
-    Registra un cobro para un cliente y lo saca de la cola de cobranza.
-    'metodo' es 'efectivo' o 'transferencia'.
+    Suma de cobros de un cliente registrados DESPUÉS de la última foto.
+
+    Es la clave anti-doble-conteo: solo estos cobros descuentan de la deuda mostrada,
+    porque la foto todavía no los refleja. Los cobros anteriores a la última foto ya
+    están reflejados en el saldo de esa foto, así que NO se descuentan de nuevo.
     """
+    ultima = sesion.query(ImportSnapshot).order_by(ImportSnapshot.id.desc()).first()
+    ref = ultima.fecha_hora if ultima else datetime.min
+    return sum(float(c.monto) for c in sesion.query(Cobro)
+               .filter(Cobro.cuit == cuit, Cobro.fecha_hora > ref).all())
+
+
+def total_cobros_desde_ultima_foto(sesion) -> float:
+    """Igual que arriba pero de TODOS los clientes (para el total a cobrar del panel)."""
+    ultima = sesion.query(ImportSnapshot).order_by(ImportSnapshot.id.desc()).first()
+    ref = ultima.fecha_hora if ultima else datetime.min
+    return sum(float(c.monto) for c in sesion.query(Cobro)
+               .filter(Cobro.fecha_hora > ref).all())
+
+
+def saldo_vencido_pendiente(sesion, cliente: Cliente, hoy: date) -> float:
+    """Lo que le queda por pagar de lo vencido = vencido de la foto − pagos a cuenta."""
+    bruto = sum(float(f.saldo_pendiente) for f in cliente.facturas
+                if motor.esta_vencida(f, hoy))
+    return max(0.0, bruto - cobros_desde_ultima_foto(sesion, cliente.cuit))
+
+
+def registrar_cobro(sesion, cliente: Cliente, monto, metodo: str, hoy: date = None) -> Cobro:
+    """
+    Registra un cobro para un cliente. Si con este pago queda saldada la deuda vencida,
+    el cliente sale de la cobranza ('pagado'); si es un pago parcial (a cuenta), sigue en
+    la agenda por el resto ('activo').
+    """
+    hoy = hoy or date.today()
+    restante_antes = saldo_vencido_pendiente(sesion, cliente, hoy)
+
     estado = "a_rendir" if metodo == "efectivo" else "a_conciliar"
     cobro = Cobro(
         cuit=cliente.cuit,
@@ -38,8 +72,12 @@ def registrar_cobro(sesion, cliente: Cliente, monto, metodo: str) -> Cobro:
         estado=estado,
     )
     sesion.add(cobro)
-    # El cliente pagó: dejamos de perseguirlo (la plata se sigue en la pantalla Caja).
-    cliente.estado_gestion = "pagado"
+
+    # ¿Quedó saldado o fue un pago a cuenta? (0.5 de tolerancia por redondeos)
+    if restante_antes - float(monto) <= 0.5:
+        cliente.estado_gestion = "pagado"       # saldó: sale de la cobranza
+    else:
+        cliente.estado_gestion = "activo"       # pago parcial: sigue por el resto
     cliente.gestion_hasta = None
     sesion.commit()
     return cobro

@@ -77,9 +77,10 @@ def inicio(request: Request):
     inicio_mes = datetime(hoy.year, hoy.month, 1)
     sesion = Sesion()
     try:
-        # KPI: total a cobrar (suma de lo pendiente, ahora).
+        # KPI: total a cobrar (lo pendiente de la foto − pagos a cuenta ya registrados).
         pendientes = sesion.query(Factura).filter_by(estado="pendiente").all()
-        total_a_cobrar = sum(float(f.saldo_pendiente) for f in pendientes)
+        total_a_cobrar = max(0.0, sum(float(f.saldo_pendiente) for f in pendientes)
+                             - cobros_mod.total_cobros_desde_ultima_foto(sesion))
 
         # Contexto: evolución del DSO y del total a cobrar, foto a foto.
         snaps = sesion.query(ImportSnapshot).order_by(ImportSnapshot.id.asc()).all()
@@ -202,12 +203,18 @@ def lista_clientes(request: Request):
             if total <= 0:
                 continue
 
+            # Pagos a cuenta ya registrados (desde la última foto): descuentan la deuda,
+            # sin contar dos veces (los anteriores a la foto ya están reflejados en ella).
+            pagado_a_cuenta = cobros_mod.cobros_desde_ultima_foto(sesion, c.cuit)
+            total = max(0.0, float(total) - pagado_a_cuenta)
+
             # Datos para la agenda priorizada (Fase 2).
             vencidas = [f for f in facturas if motor.esta_vencida(f, hoy)]
-            total_vencido = sum((float(f.saldo_pendiente) for f in vencidas), 0.0)
+            total_vencido_bruto = sum((float(f.saldo_pendiente) for f in vencidas), 0.0)
+            total_vencido = max(0.0, total_vencido_bruto - pagado_a_cuenta)
             max_dias = max((motor.dias_atraso(f, hoy) for f in vencidas), default=0)
-            puntaje = motor.puntaje_cobrabilidad(facturas, hoy)
-            tiene_vencidas = len(vencidas) > 0
+            puntaje = motor.puntaje_cobrabilidad(facturas, hoy, pagado_a_cuenta=pagado_a_cuenta)
+            tiene_vencidas = total_vencido > 0.5
 
             # Prioridad por color, según hace cuánto está la más vencida.
             if max_dias > 60:
@@ -220,7 +227,10 @@ def lista_clientes(request: Request):
                 prioridad = None
 
             # Razón en una línea (texto humano).
-            if tiene_vencidas:
+            if tiene_vencidas and pagado_a_cuenta > 0.5:
+                razon = (f"Pagó ${pagado_a_cuenta:,.0f} a cuenta · debe ${total_vencido:,.0f} "
+                         f"vencidos").replace(",", ".")
+            elif tiene_vencidas:
                 razon = (f"Debe ${total_vencido:,.0f} vencidos · la más vieja hace "
                          f"{max_dias} días").replace(",", ".")
             else:
@@ -237,6 +247,7 @@ def lista_clientes(request: Request):
                 "cuit_sospechoso": c.cuit_sospechoso,
                 "total": float(total),
                 "total_vencido": total_vencido,
+                "pagado_a_cuenta": pagado_a_cuenta,
                 "max_dias": max_dias,
                 "puntaje": puntaje,
                 "tiene_vencidas": tiene_vencidas,
@@ -461,7 +472,9 @@ def _datos_cliente(sesion, cuit, hoy):
     config = Configuracion.obtener(sesion)
     facturas = list(cliente.facturas)
     vencidas = [f for f in facturas if motor.esta_vencida(f, hoy)]
-    total_vencido = sum((float(f.saldo_pendiente) for f in vencidas), 0.0)
+    # Deuda vencida MENOS lo que ya pagó a cuenta (para no cobrar de más).
+    pagado_a_cuenta = cobros_mod.cobros_desde_ultima_foto(sesion, cuit)
+    total_vencido = max(0.0, sum((float(f.saldo_pendiente) for f in vencidas), 0.0) - pagado_a_cuenta)
     max_dias = max((motor.dias_atraso(f, hoy) for f in vencidas), default=0)
     # La factura más vieja vencida (la que nombramos en el mensaje).
     factura_ref = ""
@@ -496,7 +509,8 @@ def _datos_cliente(sesion, cuit, hoy):
         "telefono": cliente.telefono_whatsapp or "",
         "falta_telefono": cliente.falta_telefono,
         "total_vencido": total_vencido,
-        "tiene_vencidas": bool(vencidas),
+        "pagado_a_cuenta": pagado_a_cuenta,
+        "tiene_vencidas": total_vencido > 0.5,
         "etapa": etapa,
         "ventana_abierta": ventana,
         "tipo_proximo": tipo_proximo,

@@ -17,6 +17,9 @@
       <div class="text-right">
         <div class="text-xs text-slate-400">Debe vencido</div>
         <div class="text-lg font-bold text-slate-900">${{ "{:,.0f}".format(c.total_vencido).replace(",", ".") }}</div>
+        {% if c.pagado_a_cuenta > 0.5 %}
+          <div class="text-xs text-green-600">Pagó ${{ "{:,.0f}".format(c.pagado_a_cuenta).replace(",", ".") }} a cuenta</div>
+        {% endif %}
       </div>
     {% endif %}
   </div>

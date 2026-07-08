@@ -52,13 +52,13 @@ def total_por_cliente(facturas: list[Factura]) -> Decimal:
     )
 
 
-def puntaje_cobrabilidad(facturas: list[Factura], hoy: date) -> float:
+def puntaje_cobrabilidad(facturas: list[Factura], hoy: date, pagado_a_cuenta: float = 0.0) -> float:
     """
     Puntaje "a quién cobrar primero" (worklist, estilo HighRadius/Upflow).
 
     Es BALANCEADO: combina cuánto debe vencido (impacto) con hace cuánto está vencido
     (urgencia). Más alto = más prioridad. Devuelve 0 si el cliente no tiene nada vencido
-    (no entra en la agenda de hoy).
+    (no entra en la agenda de hoy). 'pagado_a_cuenta' descuenta pagos parciales ya hechos.
     """
     total_vencido = Decimal("0")
     max_dias = 0
@@ -67,6 +67,8 @@ def puntaje_cobrabilidad(facturas: list[Factura], hoy: date) -> float:
             total_vencido += Decimal(str(f.saldo_pendiente))
             max_dias = max(max_dias, dias_atraso(f, hoy))
 
+    # Descontamos lo que ya pagó a cuenta (nunca por debajo de 0).
+    total_vencido = max(Decimal("0"), total_vencido - Decimal(str(pagado_a_cuenta)))
     if total_vencido <= 0:
         return 0.0
 
