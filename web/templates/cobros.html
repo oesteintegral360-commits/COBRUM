@@ -43,22 +43,22 @@
   <div class="space-y-4 mb-8">
     {% for vendedor, datos in por_vendedor.items() %}
       <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-3">
           <span class="font-semibold text-slate-900">{{ vendedor }}</span>
-          <span class="text-lg font-bold text-slate-900">${{ "{:,.0f}".format(datos.total).replace(",", ".") }} a rendir</span>
+          <span class="text-lg font-bold text-slate-900 whitespace-nowrap">${{ "{:,.0f}".format(datos.total).replace(",", ".") }} a rendir</span>
         </div>
         <div class="divide-y divide-slate-100">
           {% for c in datos.cobros %}
-            <div class="flex items-center justify-between py-2">
-              <div>
+            <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-2">
+              <div class="min-w-0">
                 <span class="text-slate-700">{{ c.cliente }}</span>
                 <span class="text-xs text-slate-400 ml-2">{{ c.fecha.strftime("%d/%m %H:%M") }}</span>
               </div>
-              <div class="flex items-center gap-3">
-                <span class="font-semibold text-slate-700">${{ "{:,.0f}".format(c.monto).replace(",", ".") }}</span>
+              <div class="flex items-center gap-3 ml-auto">
+                <span class="font-semibold text-slate-700 whitespace-nowrap">${{ "{:,.0f}".format(c.monto).replace(",", ".") }}</span>
                 <form action="/cobros/rendir" method="post">
                   <input type="hidden" name="cobro_id" value="{{ c.id }}">
-                  <button type="submit" class="text-sm rounded-lg bg-green-600 text-white px-3 py-1.5 hover:bg-green-700">Marcar rendido</button>
+                  <button type="submit" class="text-sm rounded-lg bg-green-600 text-white px-3 py-2 hover:bg-green-700 whitespace-nowrap">Marcar rendido</button>
                 </form>
               </div>
             </div>
