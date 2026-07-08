@@ -98,6 +98,7 @@ sumar el add-on o subir de plan — **nunca bloquea** el acceso a los datos.
 - **SQLite detrás de SQLAlchemy** — la base vive detrás de una sola línea (`DATABASE_URL` en `cobranzas/config.py`). Hoy es un archivo local; el día que comercialicemos se cambia esa línea por **PostgreSQL** en la nube **sin reescribir la lógica**.
 - **FastAPI + Jinja2 + Tailwind (CDN)** — web liviana tipo app, **sin paso de build**.
 - **pandas + openpyxl** para leer Excel (el corazón del producto).
+- **IA (Claude, modelo `claude-sonnet-5`) para leer fotos / PDF / cualquier formato** de cuenta corriente (`cobranzas/lectura_ia.py`): extrae las filas y muestra una **pantalla de revisión** para confirmar antes de importar (así una cifra mal leída no entra sola). Es la **primera integración real (no simulada)**: usa `ANTHROPIC_API_KEY` (la crea cada empresa; costo por uso, centavos por foto). El Excel y la IA terminan en el mismo motor (`importador.importar_filas`). Si no hay clave, avisa y sigue andando con Excel.
 - Pantalla **acción-first** (a quién cobrar / estado), NO un panel de reportes.
 
 ### El producto en una frase
