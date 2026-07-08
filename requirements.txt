@@ -12,4 +12,6 @@ psycopg2-binary==2.9.10   # conector de PostgreSQL (solo se usa en la nube)
 pandas==2.2.3             # leer el Excel (el corazón del producto)
 openpyxl==3.1.5           # motor que usa pandas para archivos .xlsx
 
+anthropic>=0.70.0         # IA (Claude) para leer fotos / cualquier formato de cta cte
+
 pytest==8.3.4             # tests automáticos

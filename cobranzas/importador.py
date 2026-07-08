@@ -91,12 +91,22 @@ def _a_decimal(valor) -> Decimal:
         return Decimal("0")
 
 
+def _texto(valor) -> str:
+    """Convierte cualquier valor a texto limpio; NaN/None -> ''."""
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(valor).strip()
+
+
 def importar_foto(sesion, ruta_excel: str, nombre_archivo: Optional[str] = None) -> ResultadoImport:
     """
-    Importa una foto (Excel) a la base. 'sesion' es una sesión de SQLAlchemy.
-
-    Hace toda la lógica de la Fase 1: auto-identificar cliente, no duplicar facturas,
-    y reemplazar la foto vieja (lo que desaparece queda pagado).
+    Importa una foto EXCEL a la base: lee el archivo, mapea columnas de forma flexible,
+    y delega el trabajo pesado en importar_filas().
     """
     resultado = ResultadoImport()
     nombre_archivo = nombre_archivo or str(ruta_excel)
@@ -117,10 +127,8 @@ def importar_foto(sesion, ruta_excel: str, nombre_archivo: Optional[str] = None)
     faltan = [c for c in COLUMNAS_OBLIGATORIAS if c not in mapa]
     if faltan:
         nombres_lindos = {
-            "cuit": "CUIT",
-            "numero_factura": "Número de factura",
-            "saldo_pendiente": "Saldo",
-            "fecha_vencimiento": "Vencimiento",
+            "cuit": "CUIT", "numero_factura": "Número de factura",
+            "saldo_pendiente": "Saldo", "fecha_vencimiento": "Vencimiento",
         }
         faltan_txt = ", ".join(nombres_lindos[c] for c in faltan)
         resultado.error = (
@@ -129,73 +137,95 @@ def importar_foto(sesion, ruta_excel: str, nombre_archivo: Optional[str] = None)
         )
         return resultado
 
-    # 3) Marcar TODAS las facturas existentes como 'no presentes' todavía. Las que
-    #    aparezcan en esta foto se vuelven a marcar presentes más abajo.
+    # 3) Armar las filas normalizadas (mismo formato que usa la lectura con IA).
+    filas = []
+    for _, fila in df.iterrows():
+        filas.append({
+            "cuit": fila[mapa["cuit"]],
+            "nombre": fila[mapa["nombre"]] if "nombre" in mapa else "",
+            "numero_factura": fila[mapa["numero_factura"]],
+            "saldo": fila[mapa["saldo_pendiente"]],
+            "fecha_vencimiento": fila[mapa["fecha_vencimiento"]],
+            "telefono": fila[mapa["telefono_whatsapp"]] if "telefono_whatsapp" in mapa else "",
+            "vendedor": fila[mapa["vendedor_asignado"]] if "vendedor_asignado" in mapa else "",
+        })
+
+    return importar_filas(sesion, filas, nombre_archivo)
+
+
+def importar_filas(sesion, filas: list, nombre_archivo: str) -> ResultadoImport:
+    """
+    Motor de importación (compartido por el Excel y la lectura con IA).
+
+    'filas' es una lista de diccionarios ya normalizados con las claves:
+    cuit, nombre, numero_factura, saldo, fecha_vencimiento, telefono, vendedor.
+
+    Hace toda la lógica: auto-identificar cliente, no duplicar facturas (por número),
+    reemplazar la foto vieja (lo que desaparece queda pagado) y guardar el snapshot.
+    """
+    resultado = ResultadoImport()
+    if not filas:
+        resultado.error = "No hay ninguna fila para procesar."
+        return resultado
+
+    # Marcar TODAS las facturas existentes como 'no presentes'. Las que aparezcan en
+    # esta foto se vuelven a marcar presentes más abajo.
     for f in sesion.query(Factura).all():
         f.presente_en_ultima_foto = False
 
     numeros_vistos: set[str] = set()
-    # Cache de clientes tocados en ESTA foto. Evita intentar crear dos veces el mismo
-    # cliente cuando tiene varias facturas (la sesión todavía no lo asentó en la base).
     clientes_en_foto: dict[str, Cliente] = {}
 
-    # 4) Recorrer cada fila de la foto.
-    for indice, fila in df.iterrows():
-        nro_excel = indice + 2  # +2: fila 1 es el encabezado y pandas arranca en 0.
+    for indice, fila in enumerate(filas):
+        nro = indice + 1
 
-        cuit = normalizar_cuit(fila[mapa["cuit"]])
-        numero = str(fila[mapa["numero_factura"]]).strip()
+        cuit = normalizar_cuit(fila.get("cuit"))
+        numero = _texto(fila.get("numero_factura"))
 
-        # Validaciones básicas de la fila (avisamos y salteamos, no rompemos todo).
         if not cuit:
-            resultado.avisos.append(f"Fila {nro_excel}: sin CUIT, la saltamos.")
+            resultado.avisos.append(f"Fila {nro}: sin CUIT, la saltamos.")
             continue
         if not numero or numero.lower() == "nan":
-            resultado.avisos.append(f"Fila {nro_excel}: sin número de factura, la saltamos.")
+            resultado.avisos.append(f"Fila {nro}: sin número de factura, la saltamos.")
             continue
         if numero in numeros_vistos:
             resultado.avisos.append(
-                f"Fila {nro_excel}: el número de factura '{numero}' está repetido en el Excel; usamos la primera."
-            )
+                f"Fila {nro}: el número de factura '{numero}' está repetido; usamos la primera.")
             continue
         numeros_vistos.add(numero)
 
-        # Fecha de vencimiento.
         try:
-            fecha_vto = pd.to_datetime(fila[mapa["fecha_vencimiento"]]).date()
+            fecha_vto = pd.to_datetime(fila.get("fecha_vencimiento")).date()
         except Exception:
-            resultado.avisos.append(
-                f"Fila {nro_excel}: no entendimos la fecha de vencimiento, la saltamos."
-            )
+            resultado.avisos.append(f"Fila {nro}: no entendimos la fecha de vencimiento, la saltamos.")
             continue
 
-        saldo = _a_decimal(fila[mapa["saldo_pendiente"]])
+        saldo = _a_decimal(fila.get("saldo"))
 
-        # 4.a) Auto-identificar / crear el cliente (upsert por CUIT).
-        #      Primero miramos el cache de esta foto, después la base.
+        # Auto-identificar / crear el cliente (upsert por CUIT).
         cliente = clientes_en_foto.get(cuit) or sesion.get(Cliente, cuit)
         if cliente is None:
             cliente = Cliente(cuit=cuit)
             sesion.add(cliente)
             resultado.clientes_nuevos += 1
-            # Avisamos si el dígito verificador no cierra (no bloquea).
             if not validar_digito_verificador(cuit):
                 cliente.cuit_sospechoso = True
                 resultado.avisos.append(
-                    f"Fila {nro_excel}: el CUIT {cuit} no pasa el dígito verificador; lo cargamos igual, revisalo."
-                )
-
+                    f"Fila {nro}: el CUIT {cuit} no pasa el dígito verificador; lo cargamos igual, revisalo.")
         clientes_en_foto[cuit] = cliente
 
-        # Completar/actualizar datos del cliente si vienen en la planilla.
-        if "nombre" in mapa and pd.notna(fila[mapa["nombre"]]):
-            cliente.nombre = str(fila[mapa["nombre"]]).strip()
-        if "telefono_whatsapp" in mapa and pd.notna(fila[mapa["telefono_whatsapp"]]):
-            cliente.telefono_whatsapp = str(fila[mapa["telefono_whatsapp"]]).strip()
-        if "vendedor_asignado" in mapa and pd.notna(fila[mapa["vendedor_asignado"]]):
-            cliente.vendedor_asignado = str(fila[mapa["vendedor_asignado"]]).strip()
+        # Completar/actualizar datos del cliente si vienen.
+        nombre = _texto(fila.get("nombre"))
+        if nombre:
+            cliente.nombre = nombre
+        telefono = _texto(fila.get("telefono"))
+        if telefono:
+            cliente.telefono_whatsapp = telefono
+        vendedor = _texto(fila.get("vendedor"))
+        if vendedor:
+            cliente.vendedor_asignado = vendedor
 
-        # 4.b) Crear o actualizar la factura (matcheo por número).
+        # Crear o actualizar la factura (matcheo por número).
         factura = sesion.get(Factura, numero)
         if factura is None:
             factura = Factura(numero_factura=numero, cuit=cuit)
@@ -210,23 +240,17 @@ def importar_foto(sesion, ruta_excel: str, nombre_archivo: Optional[str] = None)
         factura.estado = "pendiente"
         factura.presente_en_ultima_foto = True
 
-    # Asentamos todo lo creado/modificado en la foto antes de hacer las cuentas, así
-    # las consultas de abajo ven también las facturas nuevas (la sesión de la web no
-    # hace autoflush).
     sesion.flush()
 
-    # 5) Las facturas que quedaron 'no presentes' y estaban pendientes -> pagadas.
-    #    (Desapareció de la foto = se asume cobrada. La foto reemplaza, no suma.)
+    # Las facturas que quedaron 'no presentes' y estaban pendientes -> pagadas.
     for f in sesion.query(Factura).filter_by(presente_en_ultima_foto=False).all():
         if f.estado == "pendiente":
             f.estado = "pagada"
             resultado.facturas_pagadas += 1
 
-    # Total pendiente actual (después de aplicar la foto).
     pendientes = sesion.query(Factura).filter_by(estado="pendiente").all()
     resultado.total_pendiente = sum((Decimal(str(f.saldo_pendiente)) for f in pendientes), Decimal("0"))
 
-    # 6) Registrar el snapshot de esta carga (incluye el DSO aproximado de la foto).
     snap = ImportSnapshot(
         fecha_hora=datetime.now(),
         nombre_archivo=nombre_archivo,
@@ -235,6 +259,5 @@ def importar_foto(sesion, ruta_excel: str, nombre_archivo: Optional[str] = None)
         dso_aprox=motor.dias_cobranza_aprox(pendientes, date.today()),
     )
     sesion.add(snap)
-
     sesion.commit()
     return resultado
