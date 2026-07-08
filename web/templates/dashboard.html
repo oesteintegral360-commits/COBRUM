@@ -91,9 +91,9 @@
   <form action="/subir" method="post" enctype="multipart/form-data" class="flex flex-col sm:flex-row items-center gap-3">
     <div class="flex-1">
       <div class="font-semibold text-slate-800">Actualizá tu foto</div>
-      <div class="text-xs text-slate-400">Subí el Excel más reciente para refrescar los números.</div>
+      <div class="text-xs text-slate-400">Excel, PDF o una foto de tu cuenta corriente — la lee sola.</div>
     </div>
-    <input name="archivo" type="file" accept=".xlsx,.xls" required
+    <input name="archivo" type="file" accept=".xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp" required
            class="text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-white">
     <button type="submit" class="rounded-lg bg-blue-600 text-white px-5 py-2 font-semibold hover:bg-blue-700 whitespace-nowrap">Subir foto</button>
   </form>

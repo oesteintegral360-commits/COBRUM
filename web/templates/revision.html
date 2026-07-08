@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block titulo %}COBRUM — Revisar lectura{% endblock %}
+
+{% block contenido %}
+
+{% if error %}
+  <div class="rounded-xl bg-red-50 border border-red-200 text-red-800 px-4 py-4 mb-6">
+    <strong>No pudimos leer el archivo.</strong>
+    <p class="text-sm mt-1">{{ error }}</p>
+  </div>
+  <a href="/" class="inline-block rounded-xl bg-blue-600 text-white px-6 py-3 font-semibold hover:bg-blue-700">Volver a subir</a>
+
+{% elif not filas %}
+  <div class="text-center py-16 bg-white rounded-2xl border border-slate-200">
+    <div class="text-5xl mb-3">🤔</div>
+    <p class="text-lg font-semibold text-slate-700">La IA no encontró facturas en ese archivo</p>
+    <p class="text-slate-500 mt-1">Probá con una foto más nítida o con el Excel de tu sistema.</p>
+    <a href="/" class="inline-block mt-5 rounded-xl bg-blue-600 text-white px-6 py-3 font-semibold hover:bg-blue-700">Volver a subir</a>
+  </div>
+
+{% else %}
+  <div class="mb-4">
+    <h1 class="text-2xl font-bold text-slate-900">Revisá lo que entendió la IA</h1>
+    <p class="text-sm text-slate-500">
+      Leímos <strong>{{ filas|length }}</strong> factura(s) de <strong>{{ nombre_archivo }}</strong>.
+      Corregí cualquier dato antes de importar — así nada mal leído entra por error.
+    </p>
+  </div>
+
+  <form action="/importar-confirmado" method="post">
+    <input type="hidden" name="cantidad" value="{{ filas|length }}">
+    <input type="hidden" name="nombre_archivo" value="{{ nombre_archivo }}">
+
+    <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+          <tr>
+            <th class="text-left px-3 py-2">N° factura</th>
+            <th class="text-left px-3 py-2">CUIT</th>
+            <th class="text-left px-3 py-2">Nombre</th>
+            <th class="text-left px-3 py-2">Saldo</th>
+            <th class="text-left px-3 py-2">Vencimiento</th>
+            <th class="text-left px-3 py-2">Teléfono</th>
+            <th class="text-left px-3 py-2">Vendedor</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for f in filas %}
+          <tr>
+            <td class="px-2 py-1"><input name="numero_{{ loop.index0 }}" value="{{ f.numero_factura }}" class="w-28 rounded border border-slate-200 px-2 py-1 focus:border-blue-500 focus:outline-none"></td>
+            <td class="px-2 py-1"><input name="cuit_{{ loop.index0 }}" value="{{ f.cuit }}" class="w-36 rounded border border-slate-200 px-2 py-1 focus:border-blue-500 focus:outline-none"></td>
+            <td class="px-2 py-1"><input name="nombre_{{ loop.index0 }}" value="{{ f.nombre }}" class="w-44 rounded border border-slate-200 px-2 py-1 focus:border-blue-500 focus:outline-none"></td>
+            <td class="px-2 py-1"><input name="saldo_{{ loop.index0 }}" value="{{ f.saldo }}" class="w-28 rounded border border-slate-200 px-2 py-1 focus:border-blue-500 focus:outline-none"></td>
+            <td class="px-2 py-1"><input name="vto_{{ loop.index0 }}" value="{{ f.fecha_vencimiento }}" placeholder="AAAA-MM-DD" class="w-32 rounded border border-slate-200 px-2 py-1 focus:border-blue-500 focus:outline-none"></td>
+            <td class="px-2 py-1"><input name="tel_{{ loop.index0 }}" value="{{ f.telefono }}" class="w-36 rounded border border-slate-200 px-2 py-1 focus:border-blue-500 focus:outline-none"></td>
+            <td class="px-2 py-1"><input name="vend_{{ loop.index0 }}" value="{{ f.vendedor }}" class="w-32 rounded border border-slate-200 px-2 py-1 focus:border-blue-500 focus:outline-none"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flex flex-wrap gap-3 mt-5">
+      <button type="submit" class="rounded-xl bg-green-600 text-white px-6 py-3 font-semibold hover:bg-green-700">
+        Confirmar e importar
+      </button>
+      <a href="/" class="rounded-xl bg-slate-100 text-slate-700 px-6 py-3 font-semibold hover:bg-slate-200">Cancelar</a>
+    </div>
+    <p class="text-xs text-slate-400 mt-2">Al confirmar, esto reemplaza la foto anterior (como cualquier carga).</p>
+  </form>
+{% endif %}
+
+{% endblock %}

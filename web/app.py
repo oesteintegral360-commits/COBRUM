@@ -19,7 +19,8 @@ from fastapi.staticfiles import StaticFiles
 
 from cobranzas.db import Sesion, crear_tablas
 from cobranzas.modelos import Cliente, Factura, ImportSnapshot, Configuracion, Mensaje
-from cobranzas.importador import importar_foto
+from cobranzas.importador import importar_foto, importar_filas
+from cobranzas import lectura_ia
 from cobranzas import motor
 from cobranzas import planes as planes_mod
 from cobranzas import mensajeria
@@ -134,25 +135,77 @@ def inicio(request: Request):
     })
 
 
+def _cobranza_automatica_si_corresponde(sesion, resultado):
+    """Si está en modo automático y la importación salió bien, manda la cobranza sola."""
+    config = Configuracion.obtener(sesion)
+    if not resultado.error and config.modo_envio == "automatico":
+        _ultima_cobranza["resumen"] = auto.ejecutar_cobranza(sesion, date.today())
+    else:
+        _ultima_cobranza["resumen"] = None
+
+
 @app.post("/subir")
-async def subir(archivo: UploadFile = File(...)):
-    """Recibe el Excel, lo guarda, lo importa y redirige a la lista."""
-    destino = SUBIDOS / archivo.filename
+async def subir(request: Request, archivo: UploadFile = File(...)):
+    """
+    Recibe el archivo. Si es Excel, lo importa directo. Si es foto/PDF/otro formato, lo
+    lee con IA y muestra una pantalla de revisión para confirmar antes de importar.
+    """
+    nombre = archivo.filename or "archivo"
+    destino = SUBIDOS / nombre
     with destino.open("wb") as f:
         shutil.copyfileobj(archivo.file, f)
 
+    # --- Excel: camino directo (sin costo, sin IA) ---
+    if nombre.lower().endswith((".xlsx", ".xls")):
+        sesion = Sesion()
+        try:
+            resultado = importar_foto(sesion, str(destino), nombre_archivo=nombre)
+            _cobranza_automatica_si_corresponde(sesion, resultado)
+        finally:
+            sesion.close()
+        _ultimo_resultado["datos"] = resultado
+        return RedirectResponse(url="/clientes", status_code=303)
+
+    # --- Foto / PDF / otro: leer con IA y mandar a revisión ---
+    try:
+        filas = lectura_ia.extraer_filas(str(destino), nombre)
+    except lectura_ia.ErrorLecturaIA as e:
+        return plantillas.TemplateResponse("revision.html", {
+            "request": request, "error": str(e), "filas": [], "nombre_archivo": nombre,
+        })
+    return plantillas.TemplateResponse("revision.html", {
+        "request": request, "error": None, "filas": filas, "nombre_archivo": nombre,
+    })
+
+
+@app.post("/importar-confirmado")
+async def importar_confirmado(request: Request):
+    """Recibe las filas revisadas (y quizá corregidas) por el usuario y las importa."""
+    form = await request.form()
+    try:
+        cantidad = int(form.get("cantidad", 0))
+    except (TypeError, ValueError):
+        cantidad = 0
+
+    filas = []
+    for i in range(cantidad):
+        filas.append({
+            "cuit": form.get(f"cuit_{i}", ""),
+            "nombre": form.get(f"nombre_{i}", ""),
+            "numero_factura": form.get(f"numero_{i}", ""),
+            "saldo": form.get(f"saldo_{i}", ""),
+            "fecha_vencimiento": form.get(f"vto_{i}", ""),
+            "telefono": form.get(f"tel_{i}", ""),
+            "vendedor": form.get(f"vend_{i}", ""),
+        })
+
+    nombre = form.get("nombre_archivo", "lectura-ia")
     sesion = Sesion()
     try:
-        resultado = importar_foto(sesion, str(destino), nombre_archivo=archivo.filename)
-        # Si la empresa está en modo automático, mandamos sola la cobranza de la foto nueva.
-        config = Configuracion.obtener(sesion)
-        if not resultado.error and config.modo_envio == "automatico":
-            _ultima_cobranza["resumen"] = auto.ejecutar_cobranza(sesion, date.today())
-        else:
-            _ultima_cobranza["resumen"] = None
+        resultado = importar_filas(sesion, filas, nombre)
+        _cobranza_automatica_si_corresponde(sesion, resultado)
     finally:
         sesion.close()
-
     _ultimo_resultado["datos"] = resultado
     return RedirectResponse(url="/clientes", status_code=303)
 
