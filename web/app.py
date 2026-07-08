@@ -523,8 +523,11 @@ def pagina_cliente(request: Request, cuit: str):
 
 
 @app.post("/cliente/{cuit}/enviar")
-def enviar_recordatorio(cuit: str):
-    """Registra el envío (simulado) del recordatorio propuesto, marcando si es plantilla o gratis."""
+def enviar_recordatorio(cuit: str, texto: str = Form("")):
+    """
+    Registra el envío (simulado) del recordatorio. Usa el texto editado por el usuario
+    (si lo cambió) o el propuesto por el sistema, y le agrega el link de pago.
+    """
     hoy = date.today()
     sesion = Sesion()
     try:
@@ -532,9 +535,11 @@ def enviar_recordatorio(cuit: str):
         if datos and datos["tiene_vencidas"]:
             cliente = sesion.get(Cliente, cuit)
             config = Configuracion.obtener(sesion)
+            # El texto editado manda; si vino vacío, usamos el propuesto.
+            base = texto.strip() or datos["propuesta"]
             # Sumamos el link de pago "de un toque" al mensaje.
             texto = pagos_mod.agregar_link_al_mensaje(
-                sesion, cliente, datos["total_vencido"], datos["propuesta"], config.nombre_negocio)
+                sesion, cliente, datos["total_vencido"], base, config.nombre_negocio)
             sesion.add(Mensaje(
                 cuit=cuit,
                 direccion="saliente",
